@@ -27,11 +27,18 @@ cp .env.example .env            # completar ENCRYPTION_KEY con: openssl rand -ba
 pnpm install
 pnpm db:up                      # Postgres en Docker, puerto 5433
 pnpm db:migrate
+pnpm db:seed                    # roles, ai_settings id=1, datos del negocio vacíos
+pnpm --filter @bot/server cli user:create --email vos@ejemplo.com --name "Tu nombre" --role admin
+pnpm dev                        # API en :3000 y panel en :3001 (http://localhost:3001)
 ```
 
 Con `WHATSAPP_ENABLED=false` el servidor arranca sin conectar WhatsApp.
 
-## Hecho (sin compilar ni probar todavía)
+- Tests: `pnpm test` (necesita el Postgres de `pnpm db:up`; usa la base `bot_test`, o `TEST_DATABASE_URL`).
+- Producción: `docker compose --profile prod up -d --build` (aplica migraciones al arrancar y sirve el panel en el mismo puerto).
+  Después: `docker compose exec app sh -c "cd apps/server && node dist/cli.js seed"` y crear el usuario con `user:create`.
+
+## Hecho
 
 - Esquema Prisma completo + migración inicial (`apps/server/prisma`).
 - `src/core`: env (zod), cifrado, normalización de texto, bus de eventos, auditoría, logger, settings.
@@ -45,18 +52,17 @@ Con `WHATSAPP_ENABLED=false` el servidor arranca sin conectar WhatsApp.
 - `src/sales`: carrito y pedido "a revisar" (no cobra).
 - `src/events`: leads de Glitter Bar / Shimmer Walls con campos faltantes, seguimientos.
 
-## Pendiente (en este orden)
+- `src/ai`: prompt base, orquestador Responses API (máx. 5 vueltas, timeout por llamada y total), 15 herramientas con validación zod, registro en `ai_runs`, memoria por cliente (`memory_summary` + últimos N mensajes).
+- Webhook Tiendanube (`POST /webhooks/tiendanube`): firma HMAC sobre el body crudo, dedupe en `webhook_events`, re-consulta del producto, reproceso de pendientes al arrancar.
+- `src/main.ts` + `src/http`: login con cookie y argon2, roles (`admin`, `agent`), API del panel, SSE (`/api/events`), WhatsApp/QR, interruptor de IA, `cli.ts` (`seed`, `user:create`).
+- `apps/panel`: Next.js exportado estático (lo sirve Fastify en producción). Bandeja en vivo, contactos, catálogo, pedidos, eventos, seguimientos, configuración (negocio, IA, usuarios), WhatsApp y auditoría.
+- Tests vitest (`apps/server/test`) de todos los escenarios de la especificación + API del panel. Dockerfile.
 
-1. `src/ai`: prompt base + orquestador Responses API (loop de tool calls, máx. ~5 vueltas, timeout) + herramientas:
-   `search_products`, `get_product_details`, `check_stock`, `get_price`, `get_business_info`, `get_service_info`,
-   `set_buyer_type`, `update_customer_profile`, `add_to_cart`, `view_cart`, `remove_from_cart`, `submit_order`,
-   `save_event_lead`, `schedule_followup`, `request_human`. Registrar cada corrida en `ai_runs`.
-   Memoria por cliente: `contacts.memory_summary` + últimos N mensajes.
-2. Webhook Tiendanube (`x-linkedstore-hmac-sha256` = HMAC-SHA256 hex del body crudo con el app secret; deduplicar en `webhook_events`; siempre re-consultar el producto a la API porque pueden llegar duplicados o desordenados).
-3. `src/main.ts` + rutas Fastify: login con sesión en cookie (argon2), roles, API del panel, SSE para la bandeja, estado/QR de WhatsApp, interruptor de IA, `cli.ts` (crear usuario), seed (roles, `ai_settings` id=1, claves de negocio vacías).
-4. Panel Next.js: login, bandeja en vivo, conversación (tomar / devolver a IA / pausar / resolver / responder), contactos, catálogo y sync, pedidos, leads, seguimientos, configuración del negocio y de la IA, WhatsApp (QR), auditoría.
-5. Tests (vitest) de los escenarios de la especificación: precio, stock, mayorista sin precio cargado, recomendaciones, envíos sin dato, Glitter Bar, Shimmer Walls, pedido de persona, persona respondiendo desde el teléfono, reconexión, mensajes duplicados, falla de OpenAI, falla de Tiendanube, cliente que vuelve.
-6. `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` en verde. Dockerfile.
+## Pendiente
+
+1. Cargar credenciales reales (ver abajo) y probar con un número de WhatsApp de prueba.
+2. Cargar los datos del negocio desde el panel (Configuración → Datos del negocio).
+3. Lista de precios mayorista: hoy solo se usa si existe la lista `wholesale` con precios cargados.
 
 ## Credenciales que van a hacer falta (no commitear)
 

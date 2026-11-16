@@ -6,7 +6,6 @@
     "node": ">=22 <23"
   },
   "scripts": {
-    "setup": "node scripts/setup.mjs",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose stop postgres",
     "db:migrate": "pnpm --filter @bot/server db:migrate",

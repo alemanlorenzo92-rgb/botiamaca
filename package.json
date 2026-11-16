@@ -1,0 +1,36 @@
+{
+  "name": "malestyle-ai",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose stop postgres",
+    "db:migrate": "pnpm --filter @bot/server db:migrate",
+    "db:generate": "pnpm --filter @bot/server db:generate",
+    "db:seed": "pnpm --filter @bot/server db:seed",
+    "dev": "concurrently --kill-others -n server,panel \"pnpm --filter @bot/server dev\" \"pnpm --filter @bot/panel dev\"",
+    "build": "pnpm --filter @bot/server db:generate && pnpm -r build",
+    "start": "pnpm --filter @bot/server start",
+    "typecheck": "pnpm --filter @bot/server db:generate && pnpm -r typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm --filter @bot/server test",
+    "user:create": "pnpm --filter @bot/server cli user:create"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.24.0",
+    "@typescript-eslint/eslint-plugin": "8.29.1",
+    "@typescript-eslint/parser": "8.29.1",
+    "concurrently": "9.1.2",
+    "eslint": "9.24.0",
+    "eslint-config-prettier": "10.1.1",
+    "globals": "16.0.0",
+    "prettier": "3.5.3",
+    "typescript": "5.8.3"
+  }
+}

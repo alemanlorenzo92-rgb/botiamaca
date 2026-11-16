@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -79,7 +79,7 @@ export async function buildServer(c: Container, options: ServerOptions = {}): Pr
     { prefix: '/api' },
   );
 
-  const panelDir = options.panelDir ?? resolve(process.cwd(), '../panel/out');
+  const panelDir = options.panelDir ?? process.env.PANEL_DIR ?? fileURLToPath(new URL('../../../panel/out', import.meta.url));
   if (existsSync(panelDir)) {
     await app.register(fastifyStatic, { root: panelDir, extensions: ['html'] });
     app.setNotFoundHandler((request, reply) => {

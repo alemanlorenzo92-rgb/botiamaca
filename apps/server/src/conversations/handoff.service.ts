@@ -80,7 +80,8 @@ export class HandoffService {
   }
 
   /** El cliente (o la IA, o el sistema) pide una persona: se frenan las respuestas automáticas. */
-  async requestHuman(conversationId: string, actor: Actor, reason: string | null) {
+  /** `message` reemplaza el aviso de derivación por defecto (por ejemplo, el de error de la IA). */
+  async requestHuman(conversationId: string, actor: Actor, reason: string | null, message?: string) {
     const current = await this.db.conversation.findUniqueOrThrow({ where: { id: conversationId } });
     if (current.status === 'HUMAN_REQUESTED' || current.status === 'HUMAN_ACTIVE') {
       return current;
@@ -95,7 +96,7 @@ export class HandoffService {
     );
     this.bus.publish({ type: 'human.requested', conversationId, reason });
     const ai = await this.settings.getAi();
-    await this.sender.sendText({ conversationId, text: ai.handoffMessage, author: 'SYSTEM' });
+    await this.sender.sendText({ conversationId, text: message ?? ai.handoffMessage, author: 'SYSTEM' });
     return conversation;
   }
 

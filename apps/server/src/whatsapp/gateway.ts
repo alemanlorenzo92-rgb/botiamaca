@@ -20,6 +20,11 @@ export type WhatsAppStatus = 'DISABLED' | 'DISCONNECTED' | 'CONNECTING' | 'QR' |
 const MAX_BACKOFF_MS = 60_000;
 const APPEND_MAX_AGE_MS = 10 * 60 * 1000;
 
+/** Tras reconectar, Baileys reenvía historial ("append"): solo se procesa lo reciente. */
+export function shouldHandleUpsert(type: string, timestamp: Date, now = Date.now()): boolean {
+  return type === 'notify' || now - timestamp.getTime() <= APPEND_MAX_AGE_MS;
+}
+
 /**
  * Adaptador Baileys (integración NO oficial de WhatsApp Web). Debe correr en una sola instancia.
  */
@@ -135,7 +140,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
         for (const raw of messages) {
           const mapped = mapWAMessage(raw);
           if (!mapped) continue;
-          if (type !== 'notify' && Date.now() - mapped.timestamp.getTime() > APPEND_MAX_AGE_MS) continue;
+          if (!shouldHandleUpsert(type, mapped.timestamp)) continue;
           try {
             await this.onMessage(mapped);
           } catch (error) {

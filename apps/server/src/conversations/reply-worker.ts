@@ -90,8 +90,7 @@ export class ReplyWorker {
       const ai = await this.settings.getAi();
       const after = await this.guard.check(conversationId);
       if (after.allowed) {
-        await this.sender.sendText({ conversationId, text: ai.errorMessage, author: 'SYSTEM' });
-        await this.handoff.requestHuman(conversationId, { type: 'SYSTEM' }, 'La IA no pudo responder');
+        await this.handoff.requestHuman(conversationId, { type: 'SYSTEM' }, 'La IA no pudo responder', ai.errorMessage);
       }
       return;
     }

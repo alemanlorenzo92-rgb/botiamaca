@@ -3,8 +3,9 @@ const RULES: [RegExp, string][] = [
   [/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]'],
   [/\b\d{22}\b/g, '[cbu]'],
   [/\b(alias)\s*:?\s*[a-z0-9]+(?:\.[a-z0-9]+){1,3}\b/gi, '$1 [alias]'],
+  [/\b\d{1,2}\.\d{3}\.\d{3}\b/g, '[documento]'],
+  [/\b(dni|documento)\s*:?\s*\d{7,8}\b/gi, '$1 [documento]'],
   [/\+?\d[\d\s().-]{7,}\d/g, '[teléfono]'],
-  [/\b\d{1,2}\.?\d{3}\.?\d{3}\b/g, '[documento]'],
 ];
 
 function escape(s: string) {

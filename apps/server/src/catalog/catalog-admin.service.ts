@@ -111,7 +111,7 @@ export class CatalogAdminService {
         const variants = input.variants.length ? input.variants : [{ values: [] }];
         for (const v of variants) {
           const variant = v.id
-            ? await tx.productVariant.update({ where: { id: v.id, productId: id }, data: { values: v.values, sku: v.sku ?? null, deletedAt: null } })
+            ? await tx.productVariant.update({ where: { id: v.id, productId: id }, data: { values: v.values, sku: v.sku === undefined ? undefined : v.sku, deletedAt: null } })
             : await tx.productVariant.create({ data: { productId: id, values: v.values, sku: v.sku ?? null } });
           keep.push(variant.id);
           for (const [listId, amount] of [

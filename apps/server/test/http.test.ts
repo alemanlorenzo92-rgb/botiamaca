@@ -41,6 +41,7 @@ describe('API del panel', () => {
     const { cookie } = await login('vende@test.local', 'clave-vende-123');
     expect((await app.inject({ url: '/api/conversations', headers: { cookie } })).statusCode).toBe(200);
     expect((await app.inject({ url: '/api/settings/ai', headers: { cookie } })).statusCode).toBe(403);
+    expect((await app.inject({ url: '/api/users', headers: { cookie } })).statusCode).toBe(403);
   });
 
   it('interruptor de IA y datos del negocio', async () => {

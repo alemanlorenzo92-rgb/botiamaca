@@ -144,8 +144,7 @@ export function registerAdminRoutes(c: Container) {
     });
 
     app.register(async (users) => {
-      users.get('/users', async (request) => {
-        requireUser(request);
+      users.get('/users', { preHandler: requirePermission('users') }, async () => {
         const rows = await c.db.user.findMany({
           orderBy: { name: 'asc' },
           select: { id: true, email: true, name: true, active: true, lastLoginAt: true, role: { select: { code: true, name: true } } },

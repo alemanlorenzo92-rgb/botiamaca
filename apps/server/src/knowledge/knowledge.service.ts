@@ -287,6 +287,9 @@ export class KnowledgeService {
     const doc = await this.db.knowledgeDocument.findUniqueOrThrow({ where: { id } });
     const title = input.title ?? doc.title;
     const content = input.content ?? doc.content;
+    const changed = title !== doc.title || content !== doc.content;
+    // Embedding antes de guardar: si falla, no queda texto nuevo con el vector viejo.
+    const vector = changed ? (await this.embedder.embed([`${title}\n${content}`]))[0]! : null;
     const updated = await this.db.knowledgeDocument.update({
       where: { id },
       data: {
@@ -298,12 +301,11 @@ export class KnowledgeService {
         reviews: { create: { action: 'edited', userId, before: { title: doc.title, content: doc.content, kind: doc.kind, temporal: doc.temporal } } },
       },
     });
-    if (title !== doc.title || content !== doc.content) {
-      const [vector] = await this.embedder.embed([`${title}\n${content}`]);
+    if (vector) {
       const chunks = await this.db.knowledgeChunk.findMany({ where: { documentId: id, kind: 'DOCUMENT' } });
       for (const chunk of chunks) {
         await this.db.knowledgeChunk.update({ where: { id: chunk.id }, data: { text: `${title}\n${content}` } });
-        await this.setEmbedding(chunk.id, vector!);
+        await this.setEmbedding(chunk.id, vector);
       }
     }
     return updated;

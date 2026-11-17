@@ -14,10 +14,11 @@ export class ReplyGuard {
     const ai = await this.settings.getAi();
     if (!ai.enabled) return { allowed: false, reason: 'IA apagada (interruptor general)' };
 
-    const conversation = await this.db.conversation.findUniqueOrThrow({ where: { id: conversationId } });
+    const conversation = await this.db.conversation.findUniqueOrThrow({ where: { id: conversationId }, include: { contact: { select: { botMuted: true } } } });
     if (conversation.status !== 'AI_ACTIVE') {
       return { allowed: false, reason: `Conversación en estado ${conversation.status}` };
     }
+    if (conversation.contact.botMuted) return { allowed: false, reason: 'Contacto marcado para que el bot no le responda' };
 
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const recentReplies = await this.db.message.count({

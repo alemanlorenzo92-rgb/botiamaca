@@ -1,0 +1,1 @@
+ALTER TABLE "contacts" ADD COLUMN "bot_muted" BOOLEAN NOT NULL DEFAULT false;

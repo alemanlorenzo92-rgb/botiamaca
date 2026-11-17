@@ -19,6 +19,8 @@ describe('claves de búsqueda', () => {
     expect(searchKey('Shimmer')).toBe('shimer');
     expect(searchKey('3x3 por favor')).toBe('3x3 por favor');
     expect(searchKey('3 m x 3 m mate')).toBe('3x3 mate');
+    expect(searchKey('3mx3m')).toBe('3x3');
+    expect(searchKey('3mtsx3mts')).toBe('3x3');
   });
 
   it('actualiza los índices viejos de productos al correr el seed', async () => {

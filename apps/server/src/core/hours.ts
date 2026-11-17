@@ -13,15 +13,43 @@ export function isWithinBusinessHours(hours: Prisma.JsonValue | null, now: Date,
   if (!hours || typeof hours !== 'object' || Array.isArray(hours)) return null;
   const h = hours as unknown as BusinessHours;
   if (!h.days || typeof h.days !== 'object') return null;
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: h.timezone ?? defaultTz,
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now);
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: h.timezone ?? defaultTz,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(now);
+  } catch {
+    return null;
+  }
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   const day = get('weekday').toLowerCase().slice(0, 3);
-  const time = `${get('hour')}:${get('minute')}`;
-  return (h.days[day] ?? []).some(([from, to]) => time >= from && time < to);
+  const minute = Number(get('hour')) * 60 + Number(get('minute'));
+  const ranges = Array.isArray(h.days[day]) ? h.days[day] : [];
+  return ranges.some((range) => {
+    const from = toMinutes(range?.[0]);
+    const to = toMinutes(range?.[1]);
+    return from !== null && to !== null && minute >= from && minute < to;
+  });
+}
+
+/** "9:00" o "09:00" → minutos desde la medianoche; null si no es una hora válida. */
+export function toMinutes(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{1,2}):([0-5]\d)$/.exec(value.trim());
+  if (!match) return null;
+  const total = Number(match[1]) * 60 + Number(match[2]);
+  return total <= 24 * 60 ? total : null;
+}
+
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
 }

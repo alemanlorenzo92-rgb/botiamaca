@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Container } from '../../container.js';
+import { isValidTimeZone, toMinutes } from '../../core/hours.js';
 import { BUSINESS_SETTING_KEYS } from '../../core/settings.js';
 import { HttpError, requirePermission, requireUser } from '../auth.js';
 import { parse } from '../validate.js';
@@ -17,10 +18,15 @@ const jsonValue = z.union([
   z.record(z.string(), jsonNested),
 ]) as z.ZodType<Prisma.InputJsonValue>;
 
+const hhmm = z.string().refine((v) => toMinutes(v) !== null, 'Hora inválida (HH:MM)');
+
 const businessHours = z
   .object({
-    timezone: z.string().optional(),
-    days: z.record(z.string(), z.array(z.tuple([z.string(), z.string()]))),
+    timezone: z.string().refine(isValidTimeZone, 'Zona horaria inválida').optional(),
+    days: z.record(
+      z.enum(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']),
+      z.array(z.tuple([hhmm, hhmm])),
+    ),
   })
   .nullable();
 

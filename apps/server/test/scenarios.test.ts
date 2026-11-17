@@ -325,5 +325,7 @@ describe('casos de borde', () => {
     expect(isWithinBusinessHours(hours, new Date('2026-11-16T20:00:00-03:00'))).toBe(false);
     expect(isWithinBusinessHours(hours, new Date('2026-11-15T12:00:00-03:00'))).toBe(false);
     expect(isWithinBusinessHours(null, new Date())).toBeNull();
+    expect(isWithinBusinessHours({ days: { mon: [['9:00', '18:00']] } }, new Date('2026-11-16T10:00:00-03:00'))).toBe(true);
+    expect(isWithinBusinessHours({ timezone: 'Nope/Nada', days: hours.days }, new Date())).toBeNull();
   });
 });

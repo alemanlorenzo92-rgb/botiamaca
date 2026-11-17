@@ -33,7 +33,7 @@ function Followups() {
   return (
     <div className="stack">
       <h1>Seguimientos</h1>
-      <p className="muted small">Los seguimientos avisan al equipo; el bot no le escribe solo al cliente. Se agendan desde Contactos.</p>
+      <p className="muted small">Los seguimientos te avisan a vos; el bot no le escribe solo al cliente. Se agendan desde Contactos.</p>
       <div className="tabs">
         {Object.entries(FOLLOWUP_STATUS).map(([k, v]) => (
           <button key={k} className={status === k ? 'active' : ''} onClick={() => setStatus(k)}>

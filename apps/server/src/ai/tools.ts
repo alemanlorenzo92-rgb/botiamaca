@@ -42,7 +42,7 @@ export const MAX_MEDIA_PER_REPLY = 3;
 export class ToolInputError extends Error {}
 
 const NO_DATA =
-  'Sin dato cargado. No lo inventes ni lo supongas: decile al cliente que no tenés ese dato y ofrecé que lo atienda una persona.';
+  'Sin dato cargado. No lo inventes ni lo supongas: decile al cliente que no tenés ese dato y ofrecé que lo atienda la dueña.';
 
 const BUSINESS_TOPICS = {
   business_profile: 'Datos generales del negocio (nombre, dirección, horarios, redes)',
@@ -51,7 +51,7 @@ const BUSINESS_TOPICS = {
   shipping_policy: 'Envíos, zonas, costos y tiempos',
   wholesale_conditions: 'Condiciones de compra mayorista (mínimos, requisitos)',
   retail_conditions: 'Condiciones de compra minorista (cambios, devoluciones, garantía)',
-  handoff_rules: 'Cuándo derivar a una persona y horarios de atención humana',
+  handoff_rules: 'Cuándo derivar a la dueña y en qué horarios atiende',
   faq: 'Preguntas frecuentes',
 } as const satisfies Partial<Record<BusinessSettingKey, string>>;
 
@@ -118,9 +118,9 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
   }),
   tool({
     name: 'get_business_info',
-    description: `Información del negocio cargada por el equipo. Temas: ${Object.entries(BUSINESS_TOPICS)
+    description: `Información del negocio cargada por la dueña. Temas: ${Object.entries(BUSINESS_TOPICS)
       .map(([k, v]) => `${k} (${v})`)
-      .join('; ')}. Si no hay dato cargado, decilo y ofrecé una persona.`,
+      .join('; ')}. Si no hay dato cargado, decilo y ofrecé que lo atienda la dueña.`,
     schema: z.object({ topic: z.enum(topicKeys()) }),
     run: async (a, _ctx, d) => {
       const value = await d.settings.getBusiness(a.topic);
@@ -225,7 +225,7 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
     schema: z.object({
       name: nullableText(120).describe('Nombre con el que se presentó el cliente'),
       interests: z.array(z.string().max(60)).max(20).nullable().describe('Intereses / categorías que le gustan (lista completa)'),
-      notes: nullableText(1000).describe('Notas para el equipo'),
+      notes: nullableText(1000).describe('Notas para la dueña'),
       memory_summary: nullableText(1500).describe('Resumen breve y actualizado del cliente'),
     }),
     run: async (a, ctx, d) => {
@@ -262,7 +262,7 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
   tool({
     name: 'submit_order',
     description:
-      'Envía el carrito como pedido para que lo revise una persona del equipo (no cobra ni confirma). Usalo solo cuando el cliente confirma que quiere avanzar. Después avisale que una persona lo contacta para confirmar pago y envío.',
+      'Envía el carrito como pedido para que lo revise la dueña (no cobra ni confirma). Usalo solo cuando el cliente confirma que quiere avanzar. Después avisale que la dueña lo contacta para confirmar pago y envío.',
     schema: z.object({
       shipping_notes: nullableText().describe('Ciudad / forma de entrega que mencionó el cliente'),
       notes: nullableText().describe('Otros comentarios del cliente'),
@@ -282,7 +282,7 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
   tool({
     name: 'save_event_lead',
     description:
-      'Crea o completa la consulta de un evento (GLITTER_BAR o SHIMMER_WALL). Llamalo cada vez que el cliente dé datos nuevos; devuelve missing_fields con lo que falta preguntar. No des precios de eventos: los cotiza una persona.',
+      'Crea o completa la consulta de un evento (GLITTER_BAR o SHIMMER_WALL). Llamalo cada vez que el cliente dé datos nuevos; devuelve missing_fields con lo que falta preguntar. No des precios de eventos: los cotiza la dueña.',
     schema: z.object({
       service: z.enum(['GLITTER_BAR', 'SHIMMER_WALL']),
       customer_name: nullableText(120),
@@ -310,7 +310,7 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
   tool({
     name: 'schedule_followup',
     description:
-      'Agenda un recordatorio para que el equipo vuelva a contactar al cliente (no le escribe solo). Usalo si el cliente pide que lo contacten más adelante o queda algo pendiente.',
+      'Agenda un recordatorio para que la dueña vuelva a contactar al cliente (no le escribe solo). Usalo si el cliente pide que lo contacten más adelante o queda algo pendiente.',
     schema: z.object({
       due_at: z.string().describe('Fecha y hora ISO 8601 con zona horaria, por ejemplo 2026-11-20T10:00:00-03:00'),
       reason: z.string().min(3).max(500),
@@ -340,14 +340,14 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
   tool({
     name: 'request_human',
     description:
-      'Deriva la conversación a una persona del equipo y frena las respuestas automáticas. Usalo si el cliente lo pide, si falta un dato que no podés inventar y el cliente lo necesita, ante reclamos, o si no podés resolver. El sistema le avisa al cliente; no hace falta que respondas nada más.',
-    schema: z.object({ reason: z.string().min(3).max(300).describe('Motivo breve para el equipo') }),
+      'Deriva la conversación a la dueña y frena las respuestas automáticas. Usalo si el cliente lo pide, si falta un dato que no podés inventar y el cliente lo necesita, ante reclamos, o si no podés resolver. El sistema le avisa al cliente; no hace falta que respondas nada más.',
+    schema: z.object({ reason: z.string().min(3).max(300).describe('Motivo breve para la dueña') }),
     run: async (a, ctx, d) => {
       const current = await d.db.conversation.findUniqueOrThrow({ where: { id: ctx.conversationId } });
-      // Si el equipo pausó o tomó la conversación mientras pensaba la IA, no se toca ni se avisa nada.
+      // Si la dueña pausó o tomó la conversación mientras pensaba la IA, no se toca ni se avisa nada.
       if (current.status === 'AI_ACTIVE') await d.handoff.requestHuman(ctx.conversationId, { type: 'AI' }, a.reason);
       ctx.handedOff = true;
-      return current.status === 'AI_ACTIVE' ? { ok: true } : { ok: true, note: 'La conversación ya está con el equipo' };
+      return current.status === 'AI_ACTIVE' ? { ok: true } : { ok: true, note: 'La conversación ya está con la dueña' };
     },
   }),
 ];

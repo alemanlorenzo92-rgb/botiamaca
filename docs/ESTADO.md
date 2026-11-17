@@ -101,10 +101,16 @@ Eventos, Seguimientos, Configuración, WhatsApp y Auditoría. En celular el men�
 - Mensajes entrantes repetidos se descartan por `externalId`; reconexión de WhatsApp con espera creciente; respuestas
   pendientes se retoman al reconectar.
 
+## Verificado con OpenAI real
+
+`smoke:openai` pasó 10/10 con una API key real, sobre una base de prueba: importar y anonimizar un chat, extraer
+conocimiento, aprobarlo, recuperarlo con embeddings reales, responder con un dato cargado en el panel (mínimo
+mayorista), no inventar un precio sin cargar, registrar tokens y latencia en `ai_runs`, frenar la IA cuando toma la
+dueña y derivar ante un error de la API. Una respuesta típica consumió unos 9.000 tokens de entrada y 300 de salida, y
+tardó unos 8 segundos.
+
 ## Falta probar (necesita credenciales)
 
-- **OpenAI real:** correr `smoke:openai` con una API key (ver `docs/GUIA_PUESTA_EN_MARCHA.md`). Se verificó que el
-  script llega a la API real (con una key inválida OpenAI responde 401), pero sin key válida no hay resultado aprobado.
 - **WhatsApp real:** vincular un número de prueba y verificar recepción, respuestas, fotos y videos.
 
 ## Límites conocidos

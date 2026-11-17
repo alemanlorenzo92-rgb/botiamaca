@@ -216,17 +216,18 @@ export class KnowledgeService {
   private saving: Promise<unknown> = Promise.resolve();
 
   /** Agrega un conocimiento: suma fuente si ya existe, marca conflicto si contradice uno existente. */
-  addItem(item: ExtractedItem, chatId: string | null): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
-    const run = this.saving.then(() => this.addItemNow(item, chatId));
+  async addItem(item: ExtractedItem, chatId: string | null): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
+    const content = anonymize(item.content);
+    const excerpt = anonymize(item.excerpt).slice(0, 1000);
+    // El embedding va fuera del turno: solo buscar vecinos y guardar se hace de a uno.
+    const [vector] = await this.embedder.embed([`${item.title}\n${content}`]);
+    const run = this.saving.then(() => this.addItemNow(item, chatId, content, excerpt, vector!));
     this.saving = run.catch(() => {});
     return run;
   }
 
-  private async addItemNow(item: ExtractedItem, chatId: string | null): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
-    const content = anonymize(item.content);
-    const excerpt = anonymize(item.excerpt).slice(0, 1000);
-    const [vector] = await this.embedder.embed([`${item.title}\n${content}`]);
-    const near = await this.neighbors(vector!);
+  private async addItemNow(item: ExtractedItem, chatId: string | null, content: string, excerpt: string, vector: number[]): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
+    const near = await this.neighbors(vector);
     const top = near[0];
     let conflict: { id: string; note: string } | null = null;
     // Muy parecido pero con otro texto (p. ej. otro valor): primero se pregunta si contradice.

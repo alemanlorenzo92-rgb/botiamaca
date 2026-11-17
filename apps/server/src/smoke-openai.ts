@@ -58,7 +58,7 @@ try {
   const docs = await db.knowledgeDocument.findMany();
   check('2-3. procesar con OpenAI y extraer conocimiento', docs.length > 0, docs.map((d) => `${d.kind}: ${d.title}`).join(' | '));
   for (const d of docs) await c.knowledge.setStatus(d.id, 'APPROVED', null);
-  check('4-5. aprobar y guardar', (await db.knowledgeDocument.count({ where: { status: 'APPROVED' } })) === docs.length);
+  check('4-5. aprobar y guardar', docs.length > 0 && (await db.knowledgeDocument.count({ where: { status: 'APPROVED' } })) === docs.length);
   const found = await c.knowledge.retrieve('cuántas unidades necesito para comprar al por mayor');
   check('6-7. recuperar el conocimiento correcto (pgvector + embeddings reales)', found.documents.some((d) => /10|diez/.test(d.content)), found.documents.map((d) => d.title).join(' | '));
   const answer = await ask('Hola! cuál es el mínimo para comprar mayorista?');

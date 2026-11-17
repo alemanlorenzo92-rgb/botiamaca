@@ -11,6 +11,7 @@ export const PERMISSIONS = [
   'inbox',
   'contacts',
   'catalog',
+  'knowledge',
   'orders',
   'leads',
   'followups',
@@ -46,6 +47,7 @@ export class HttpError extends Error {
   constructor(
     readonly statusCode: number,
     message: string,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
   }

@@ -121,7 +121,8 @@ export class AiOrchestrator implements AiResponder {
     try {
       const found = await this.knowledge.retrieve(query);
       // Trazabilidad: qué conocimiento y ejemplos se usaron en esta respuesta.
-      toolLog.push({ name: 'rag', args: { documents: found.documents.map((d) => d.id), examples: found.examples.map((e) => e.id) }, ok: true, ms: Date.now() - t });
+      if (found.documents.length || found.examples.length)
+        toolLog.push({ name: 'rag', args: { documents: found.documents.map((d) => d.id), examples: found.examples.map((e) => e.id) }, ok: true, ms: Date.now() - t });
       return found;
     } catch (error) {
       this.logger.error({ err: error }, 'no se pudo recuperar conocimiento');

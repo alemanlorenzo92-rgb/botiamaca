@@ -53,6 +53,10 @@ describe('API del panel', () => {
     expect(await c.settings.getBusiness('shipping_policy')).toBeNull();
     const nested = await app.inject({ method: 'PUT', url: '/api/settings/business/faq', headers: { cookie }, payload: { value: { cambios: null, items: ['a', null] } } });
     expect(nested.statusCode).toBe(200);
+    const hours = await app.inject({ method: 'PUT', url: '/api/settings/ai', headers: { cookie }, payload: { businessHours: { days: { mon: [['9:00', '18:00']], sat: [['10:00', '13:00']] } } } });
+    expect(hours.statusCode).toBe(200);
+    const badTz = await app.inject({ method: 'PUT', url: '/api/settings/ai', headers: { cookie }, payload: { businessHours: { timezone: 'Nope/Nada', days: {} } } });
+    expect(badTz.statusCode).toBe(400);
   });
 
   it('responder desde el panel toma la conversación', async () => {

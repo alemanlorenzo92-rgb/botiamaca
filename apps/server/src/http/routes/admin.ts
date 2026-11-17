@@ -23,7 +23,7 @@ const hhmm = z.string().refine((v) => toMinutes(v) !== null, 'Hora inválida (HH
 const businessHours = z
   .object({
     timezone: z.string().refine(isValidTimeZone, 'Zona horaria inválida').optional(),
-    days: z.record(
+    days: z.partialRecord(
       z.enum(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']),
       z.array(z.tuple([hhmm, hhmm])),
     ),

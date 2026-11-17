@@ -12,6 +12,7 @@ import { registerAdminRoutes } from './routes/admin.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerConversationRoutes } from './routes/conversations.js';
+import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerEventsRoute } from './routes/events.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.js';
 import { registerSalesRoutes } from './routes/sales.js';
@@ -73,6 +74,7 @@ export async function buildServer(c: Container, options: ServerOptions = {}): Pr
       await api.register(registerConversationRoutes(c));
       await api.register(registerCatalogRoutes(c));
       await api.register(registerKnowledgeRoutes(c));
+      await api.register(registerDashboardRoutes(c));
       await api.register(registerSalesRoutes(c));
       await api.register(registerAdminRoutes(c));
       await api.register(registerEventsRoute(c));

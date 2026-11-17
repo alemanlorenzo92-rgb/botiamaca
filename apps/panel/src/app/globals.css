@@ -91,3 +91,34 @@ tr.clickable:hover, tr.selected { background: #f0f4ff; }
 .split { display: grid; grid-template-columns: 1fr 380px; gap: 12px; align-items: start; }
 .qr { width: 280px; height: 280px; image-rendering: pixelated; border: 1px solid var(--border); }
 pre { background: #f3f4f6; padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 0; white-space: pre-wrap; }
+.check { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
+.check input { width: auto; }
+.table-wrap { overflow-x: auto; }
+td.actions { white-space: nowrap; text-align: right; }
+td.actions button { margin-left: 4px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.stat { display: flex; flex-direction: column; gap: 4px; color: inherit; }
+.stat strong { font-size: 24px; }
+.stat.alert strong { color: var(--bad); }
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.media-card { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+.media-card img, .media-card video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: #eef0f3; }
+.media-card.off { opacity: 0.55; }
+.kdoc { display: flex; flex-direction: column; gap: 8px; }
+.kdoc .source { border-left: 3px solid var(--border); padding-left: 8px; font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+.badge.PENDING { background: #fef3c7; color: #92400e; }
+.badge.APPROVED, .badge.DONE { background: #dcfce7; color: #166534; }
+.badge.REJECTED, .badge.FAILED, .badge.CONFLICT { background: #fee2e2; color: #991b1b; }
+.menu-toggle { display: none; }
+@media (max-width: 800px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: auto; height: auto; position: sticky; top: 0; z-index: 10; padding: 8px 12px; gap: 8px; }
+  .sidebar .brand, .sidebar nav, .sidebar-footer { display: none; }
+  .sidebar.open nav, .sidebar.open .sidebar-footer { display: flex; }
+  .menu-toggle { display: block; background: none; color: #fff; border: 0; text-align: left; font-weight: 700; padding: 4px 0; }
+  .main { padding: 12px; }
+  .inbox { grid-template-columns: 1fr; height: auto; }
+  .conv-list { max-height: 40vh; }
+  .grid2 { grid-template-columns: 1fr; }
+  td.actions { white-space: normal; }
+}

@@ -39,9 +39,10 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const settings = new SettingsService(db);
 
   let onMessage: (msg: InboundWhatsAppMessage) => Promise<void> = async () => {};
+  let onConnected: () => void = () => {};
   const gateway =
     !overrides.transport && env.WHATSAPP_ENABLED
-      ? new WhatsAppGateway(db, cipher, bus, logger, (msg) => onMessage(msg))
+      ? new WhatsAppGateway(db, cipher, bus, logger, (msg) => onMessage(msg), () => onConnected())
       : null;
   const transport: WhatsAppTransport = overrides.transport ?? gateway ?? new DisabledTransport();
 
@@ -94,6 +95,9 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   );
   const guard = new ReplyGuard(db, settings);
   const worker = new ReplyWorker(db, guard, ai, sender, handoff, settings, logger);
+  onConnected = () => {
+    void worker.recoverPending().catch((err: unknown) => logger.error({ err }, 'no se pudieron retomar respuestas pendientes'));
+  };
 
   onMessage = async (msg) => {
     const result = await conversations.ingest(msg);

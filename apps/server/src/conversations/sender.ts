@@ -53,6 +53,10 @@ export class MessageSender {
     }
   }
 
+  isReady(): boolean {
+    return this.transport.isConnected();
+  }
+
   /** Registra una respuesta automática que el backend bloqueó (no se envía). */
   async recordDiscarded(conversationId: string, text: string, reason: string) {
     return this.db.message.create({

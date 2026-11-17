@@ -42,6 +42,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
     private readonly bus: EventBus,
     private readonly logger: Logger,
     private readonly onMessage: (msg: InboundWhatsAppMessage) => Promise<void>,
+    private readonly onConnected: () => void = () => {},
   ) {}
 
   getStatus() {
@@ -113,6 +114,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
         if (update.connection === 'open') {
           this.attempts = 0;
           await this.setStatus('CONNECTED');
+          this.onConnected();
           this.logger.info({ me: sock.user?.id }, 'WhatsApp conectado');
         }
         if (update.connection === 'close') {

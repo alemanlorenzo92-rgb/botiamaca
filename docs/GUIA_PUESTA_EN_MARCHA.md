@@ -72,10 +72,12 @@ La alternativa estable es la API oficial de WhatsApp Business (requiere cuenta d
 2. Vinculá la Página de Facebook del negocio con la cuenta profesional de Instagram. Generá un token de acceso de la Página con permisos para mensajería.
 3. En la configuración de webhooks, usá la URL `https://bot-production-c345e3fd.up.railway.app/webhooks/meta` y definí un token de verificación propio.
 4. Suscribí la Página a `messages` y `messaging_postbacks`, y la cuenta de Instagram a `messages`.
-5. En el servidor configurá `META_APP_SECRET` (secreto de la app), `META_VERIFY_TOKEN` (el mismo token del webhook) y `META_PAGE_ACCESS_TOKEN` (token de la Página). Meta se habilita únicamente cuando están las tres. Si querés, configurá también `WHATSAPP_CONTACT_LINK`; si no, el bot usa el número de WhatsApp conectado.
+5. En el servidor configurá `META_APP_SECRET` (secreto de la app), `META_VERIFY_TOKEN` (el mismo token del webhook), `META_PAGE_ACCESS_TOKEN` (token de la Página) y `META_APP_ID`. Meta se habilita únicamente cuando están las cuatro. Si querés, configurá también `WHATSAPP_CONTACT_LINK`; si no, el bot usa el número de WhatsApp conectado.
 6. Para producción, completá la verificación del negocio y pedí revisión de la app para `pages_messaging`, `instagram_manage_messages`, `instagram_basic` y `pages_manage_metadata`. Hasta que Meta apruebe la revisión, solo pueden usarlo cuentas que tengan un rol en la app.
 
-Las conversaciones de Instagram y Facebook no se importan ni se usan para extraer conocimiento. El bot ofrece continuar por WhatsApp; si la clienta prefiere seguir en Meta, la atiende por ahí, sin enviar fotos, videos ni seguimientos automáticos.
+Las conversaciones de Instagram y Facebook no se importan ni se usan para extraer conocimiento, y la IA no las redacta.
+Ante cada mensaje, el bot envía la respuesta automática fija configurada en Configuración → IA, que deriva a WhatsApp.
+No se envían fotos, videos ni seguimientos automáticos por estos canales.
 
 ## 7. Backups
 

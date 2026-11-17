@@ -75,6 +75,7 @@ export function registerAdminRoutes(c: Container) {
             historyMessages: z.number().int().min(2).max(100).optional(),
             followupAfterHours: z.number().int().min(1).max(720).nullable().optional(),
             followupMessage: z.string().min(1).max(1000).optional(),
+            metaAutoReply: z.string().min(1).max(1000).optional(),
           }),
           request.body,
         );

@@ -34,6 +34,11 @@ export class ReplyWorker {
 
   async schedule(conversationId: string): Promise<void> {
     if (this.stopped) return;
+    const conversation = await this.db.conversation.findUnique({
+      where: { id: conversationId },
+      select: { contact: { select: { channel: true } } },
+    });
+    if (!conversation || conversation.contact.channel !== 'WHATSAPP') return;
     const ai = await this.settings.getAi();
     const existing = this.timers.get(conversationId);
     if (existing) clearTimeout(existing);

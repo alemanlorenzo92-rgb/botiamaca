@@ -30,6 +30,7 @@ import { JobRunner } from './knowledge/jobs.js';
 import { KnowledgeService } from './knowledge/knowledge.service.js';
 import type { InboundWhatsAppMessage, WhatsAppTransport } from './whatsapp/transport.js';
 import { ChannelRouter } from './meta/channel-router.js';
+import { channelOf, whatsappTarget } from './meta/channel.js';
 import { MetaTransport } from './meta/meta-transport.js';
 
 export interface ContainerOverrides {
@@ -59,6 +60,12 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const metaEnabled = !!(env.META_APP_SECRET && env.META_VERIFY_TOKEN && env.META_PAGE_ACCESS_TOKEN && env.META_APP_ID);
   const metaTransport = new MetaTransport(metaEnabled ? env.META_PAGE_ACCESS_TOKEN! : null);
   const transport: WhatsAppTransport = new ChannelRouter(whatsappTransport, metaTransport);
+  const whatsappLink = () => {
+    if (env.WHATSAPP_CONTACT_LINK) return env.WHATSAPP_CONTACT_LINK;
+    const me = gateway?.isConnected() ? gateway.getStatus().me : null;
+    const number = me?.split('@')[0]?.split(':')[0];
+    return number ? `https://wa.me/${number}` : null;
+  };
 
   const media = new MediaService(db, overrides.storage ?? new LocalMediaStorage(env.MEDIA_DIR), {
     maxImageBytes: env.MEDIA_MAX_IMAGE_MB * 1024 * 1024,
@@ -98,12 +105,6 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     },
     logger,
     knowledge,
-    () => {
-      if (env.WHATSAPP_CONTACT_LINK) return env.WHATSAPP_CONTACT_LINK;
-      const me = gateway?.isConnected() ? gateway.getStatus().me : null;
-      const number = me?.split('@')[0]?.split(':')[0];
-      return number ? `https://wa.me/${number}` : null;
-    },
   );
   const guard = new ReplyGuard(db, settings);
   const worker = new ReplyWorker(db, guard, ai, sender, handoff, settings, logger);
@@ -115,7 +116,25 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
 
   onMessage = async (msg) => {
     const result = await conversations.ingest(msg);
-    if (result.kind === 'customer' && result.needsReply) await worker.schedule(result.conversationId);
+    if (result.kind !== 'customer') return;
+    if (channelOf(msg.chatJid) !== 'WHATSAPP') {
+      if (msg.fromMe) return;
+      const conversation = await db.conversation.findUnique({
+        where: { id: result.conversationId },
+        include: { contact: { select: { botMuted: true } } },
+      });
+      if (!conversation || conversation.status === 'HUMAN_ACTIVE' || conversation.contact.botMuted) return;
+      const aiSettings = await settings.getAi();
+      if (!aiSettings.enabled) return;
+      await sender.sendText({
+        conversationId: result.conversationId,
+        text: aiSettings.metaAutoReply.replaceAll('{whatsapp}', whatsappTarget(whatsappLink())),
+        author: 'AI',
+        allowMetaAutoReply: true,
+      });
+      return;
+    }
+    if (result.needsReply) await worker.schedule(result.conversationId);
   };
 
   const auth = new AuthService(db, audit);

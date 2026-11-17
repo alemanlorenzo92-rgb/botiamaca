@@ -1,10 +1,9 @@
 import { createHmac } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildInstructions } from '../src/ai/prompt.js';
 import { buildServer } from '../src/http/server.js';
 import { MetaTransport } from '../src/meta/meta-transport.js';
-import { createTestContainer, db, resetDb, textReply, type FakeLlm, type FakeTransport, type TestContainer } from './helpers.js';
+import { createTestContainer, db, resetDb, type FakeLlm, type FakeTransport, type TestContainer } from './helpers.js';
 
 const APP_SECRET = 'meta-test-secret';
 const VERIFY_TOKEN = 'meta-verify-token';
@@ -30,12 +29,15 @@ beforeEach(async () => {
   llm = testContainer.llm;
   whatsapp = testContainer.transport;
   fetchCalls = [];
+  let sentCount = 0;
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       fetchCalls.push({ url: String(input), init });
       if (init?.method === 'POST') {
-        return new Response(JSON.stringify({ message_id: 'meta-bot-mid' }), { status: 200, headers: { 'content-type': 'application/json' } });
+        sentCount++;
+        const messageId = sentCount === 1 ? 'meta-bot-mid' : `meta-bot-mid-${sentCount}`;
+        return new Response(JSON.stringify({ message_id: messageId }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
       return new Response(JSON.stringify({ name: 'Cliente de Instagram' }), { status: 200, headers: { 'content-type': 'application/json' } });
     }),
@@ -160,17 +162,16 @@ describe('webhook de Meta', () => {
     expect(await db.message.findUnique({ where: { externalId: 'ig-failed-event' } })).toBeNull();
   });
 
-  it('ingresa mensajes de Instagram, responde por Meta aunque WhatsApp esté desconectado y toma ecos de la dueña', async () => {
+  it('manda la respuesta fija en cada mensaje de Instagram y toma el eco de la dueña', async () => {
     whatsapp.connected = false;
-    llm.push(textReply('¡Hola! Seguimos por WhatsApp.'));
     expect((await postMeta(instagramMessage({ mid: 'ig-inbound-mid', text: 'Hola, me interesa un producto' }))).statusCode).toBe(200);
 
-    await vi.waitFor(async () => {
-      expect(await db.message.findFirst({ where: { externalId: 'meta-bot-mid' } })).toMatchObject({
-        direction: 'OUTBOUND',
-        author: 'AI',
-        status: 'SENT',
-      });
+    const autoReply = '¡Hola! 😊 Para atenderte mejor escribinos por WhatsApp: +54 9 3584000000 https://wa.me/5493584000000';
+    expect(await db.message.findFirst({ where: { externalId: 'meta-bot-mid' } })).toMatchObject({
+      direction: 'OUTBOUND',
+      author: 'AI',
+      status: 'SENT',
+      text: autoReply,
     });
 
     const contact = await db.contact.findUniqueOrThrow({ where: { waJid: 'ig:IG_CUSTOMER_1' } });
@@ -181,15 +182,29 @@ describe('webhook de Meta', () => {
       author: 'CUSTOMER',
       status: 'RECEIVED',
     });
-    expect(fetchCalls.some((call) => call.init?.method === 'POST')).toBe(true);
-    const sent = fetchCalls.find((call) => call.init?.method === 'POST');
+    const sentCalls = fetchCalls.filter((call) => call.init?.method === 'POST');
+    expect(sentCalls).toHaveLength(1);
+    const sent = sentCalls[0];
     expect(JSON.parse(String(sent?.init?.body))).toMatchObject({
       recipient: { id: 'IG_CUSTOMER_1' },
-      message: { text: '¡Hola! Seguimos por WhatsApp.' },
+      message: { text: autoReply },
       messaging_type: 'RESPONSE',
     });
-    expect(String(llm.calls[0]?.instructions)).toContain(WHATSAPP_LINK);
+    expect(llm.calls).toHaveLength(0);
+    await c.worker.recoverPending();
+    await c.worker.drain();
+    expect(llm.calls).toHaveLength(0);
     expect(await c.sender.isReady((await db.conversation.findFirstOrThrow()).id)).toBe(true);
+
+    expect((await postMeta(instagramMessage({ mid: 'ig-second-inbound-mid', text: 'Sigo con otra consulta' }))).statusCode).toBe(200);
+    expect(await db.message.findUnique({ where: { externalId: 'meta-bot-mid-2' } })).toMatchObject({
+      direction: 'OUTBOUND',
+      author: 'AI',
+      status: 'SENT',
+      text: autoReply,
+    });
+    expect(fetchCalls.filter((call) => call.init?.method === 'POST')).toHaveLength(2);
+    expect(llm.calls).toHaveLength(0);
 
     const duplicate = await c.conversations.ingest({
       externalId: 'meta-bot-mid',
@@ -198,7 +213,7 @@ describe('webhook de Meta', () => {
       fromMe: true,
       pushName: null,
       type: 'TEXT',
-      text: '¡Hola! Seguimos por WhatsApp.',
+      text: autoReply,
       mediaMime: null,
       timestamp: new Date(),
     });
@@ -217,7 +232,7 @@ describe('webhook de Meta', () => {
     };
     expect((await postMeta(appEcho)).statusCode).toBe(200);
     expect(await db.conversation.findFirst()).toMatchObject({ status: 'AI_ACTIVE' });
-    expect(await db.message.count()).toBe(2);
+    expect(await db.message.count()).toBe(4);
 
     const ownerEcho = {
       object: 'instagram',
@@ -235,26 +250,28 @@ describe('webhook de Meta', () => {
       expect(await db.conversation.findFirst()).toMatchObject({ status: 'HUMAN_ACTIVE' });
       expect(await db.message.findFirst({ where: { externalId: 'ig-owner-mid' } })).toMatchObject({ direction: 'OUTBOUND', author: 'HUMAN' });
     });
-    expect(await db.message.count()).toBe(3);
+    expect(await db.message.count()).toBe(5);
+    expect(fetchCalls.filter((call) => call.init?.method === 'POST')).toHaveLength(2);
+    expect(llm.calls).toHaveLength(0);
   });
 
-  it('incluye el número escrito solo en las instrucciones de Instagram', async () => {
-    const contact = await db.contact.create({ data: { waJid: 'ig:PROMPT_CUSTOMER', channel: 'INSTAGRAM' } });
-    const common = {
-      ai: await c.settings.getAi(),
-      contact,
-      whatsappLink: 'https://wa.me/5493584123456',
-      businessProfile: null,
-      configuredTopics: [],
-      now: new Date(),
-    };
-    const instagram = buildInstructions({ ...common, channel: 'INSTAGRAM' });
-    const messenger = buildInstructions({ ...common, channel: 'MESSENGER' });
+  it('no manda la respuesta fija si la conversación es humana o el contacto está silenciado', async () => {
+    const humanContact = await db.contact.create({ data: { waJid: 'ig:HUMAN', channel: 'INSTAGRAM' } });
+    await db.conversation.create({ data: { contactId: humanContact.id, status: 'HUMAN_ACTIVE' } });
+    const mutedContact = await db.contact.create({ data: { waJid: 'ig:MUTED', channel: 'INSTAGRAM', botMuted: true } });
+    await db.conversation.create({ data: { contactId: mutedContact.id, status: 'AI_ACTIVE' } });
 
-    expect(instagram).toContain('+54 9 3584123456');
-    expect(instagram).toContain('https://wa.me/5493584123456');
-    expect(messenger).toContain('https://wa.me/5493584123456');
-    expect(messenger).not.toContain('+54 9 3584123456');
+    expect((await postMeta(instagramMessage({ mid: 'ig-human-active', text: 'Hola' }, 'HUMAN'))).statusCode).toBe(200);
+    expect((await postMeta(instagramMessage({ mid: 'ig-muted', text: 'Hola' }, 'MUTED'))).statusCode).toBe(200);
+    expect(fetchCalls.filter((call) => call.init?.method === 'POST')).toHaveLength(0);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it('no manda la respuesta fija con la IA apagada', async () => {
+    await db.aiSetting.update({ where: { id: 1 }, data: { enabled: false } });
+    expect((await postMeta(instagramMessage({ mid: 'ig-ai-off', text: 'Hola' }))).statusCode).toBe(200);
+    expect(fetchCalls.filter((call) => call.init?.method === 'POST')).toHaveLength(0);
+    expect(llm.calls).toHaveLength(0);
   });
 
   it('divide textos largos de Instagram en partes de hasta 1000 bytes', async () => {

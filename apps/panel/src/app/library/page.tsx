@@ -14,7 +14,7 @@ interface Asset {
   active: boolean;
   isTutorial: boolean;
   source: 'UPLOAD' | 'IMPORT';
-  size: number;
+  sizeBytes: number;
   service: string | null;
   product: { id: string; name: string } | null;
 }
@@ -109,7 +109,7 @@ function AssetCard({ a, products, reload }: { a: Asset; products: ProductOption[
         {Object.entries(SERVICES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
       </select>
       <div className="small muted">
-        {a.kind === 'IMAGE' ? 'Foto' : 'Video'} · {(a.size / 1024 / 1024).toFixed(1)} MB{a.source === 'IMPORT' ? ' · de un chat importado' : ''}
+        {a.kind === 'IMAGE' ? 'Foto' : 'Video'} · {(a.sizeBytes / 1024 / 1024).toFixed(1)} MB{a.source === 'IMPORT' ? ' · de un chat importado' : ''}
         {a.isTutorial ? ' · tutorial' : ''}
       </div>
       <div className="row">

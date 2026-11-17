@@ -96,6 +96,8 @@ export class WhatsAppGateway implements WhatsAppTransport {
       version = undefined;
     }
 
+    // El nombre de la cuenta es por vinculación: no se arrastra el de una sesión anterior.
+    this.historyOwner = null;
     const sock = makeWASocket({
       ...(version ? { version } : {}),
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, waLogger) },

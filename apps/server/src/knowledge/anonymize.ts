@@ -18,7 +18,8 @@ const RULES: [RegExp, string | ((m: string, ...g: string[]) => string)][] = [
   [new RegExp(String.raw`(?<!\p{L})${STREET}\s+[\p{L}\d°º.' ]{2,40}?\s+(?:n[°º.]?\s*)?\d{1,5}(?!\d)`, 'giu'), '[dirección]'],
   [/(?<!\p{L})(piso|dpto\.?|depto\.?|departamento)\s*\d{1,3}\s*[°º]?\s*(?:[a-z](?!\p{L}))?/giu, '[dirección]'],
   [/(?<!\p{L})(c\.?\s?p\.?|c[oó]digo postal)\s*:?\s*[a-z]?\d{4}[a-z]{0,3}(?!\p{L})/giu, '$1 [código postal]'],
-  [/(?<!\p{L})(direcci[oó]n|domicilio|vivo en)(\s*(?:es)?\s*:?\s*)[^\n.,;!?]*\d[^\n.,;!?]*/giu, '$1$2[dirección]'],
+  // Solo "mi dirección es…", "domicilio: …", "vivo en…" (no "envío a domicilio"), y hasta el número de la calle.
+  [/(?<!\p{L})((?:direcci[oó]n|domicilio)\s*(?:es|:)|vivo en)(\s*)[^\n.,;!?\d]{0,60}\d{1,5}/giu, '$1$2[dirección]'],
   [/(?<!\p{L})(env[ií]a(?:lo|melo|mela|la)? a|entreg(?:a|ar|alo) en)(\s*)([^\n.,;!?]*\d[^\n.,;!?]*)/giu, (m, lead, sep, rest) => addressAfter(m, lead!, sep!, rest!)],
   [/(?<!\p{L})([Bb]arrio|[Bb]° ?)\s*\p{Lu}[\p{L}'’]*(?:\s+\p{Lu}[\p{L}'’]*){0,2}/gu, '$1 [barrio]'],
 ];

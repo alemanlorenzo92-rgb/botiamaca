@@ -56,7 +56,7 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
       ? new WhatsAppGateway(db, cipher, bus, logger, (msg) => onMessage(msg), () => onConnected(), (msgs, owner) => onHistory(msgs, owner))
       : null;
   const whatsappTransport: WhatsAppTransport = overrides.transport ?? gateway ?? new DisabledTransport();
-  const metaEnabled = !!(env.META_APP_SECRET && env.META_VERIFY_TOKEN && env.META_PAGE_ACCESS_TOKEN);
+  const metaEnabled = !!(env.META_APP_SECRET && env.META_VERIFY_TOKEN && env.META_PAGE_ACCESS_TOKEN && env.META_APP_ID);
   const metaTransport = new MetaTransport(metaEnabled ? env.META_PAGE_ACCESS_TOKEN! : null);
   const transport: WhatsAppTransport = new ChannelRouter(whatsappTransport, metaTransport);
 

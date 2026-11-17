@@ -59,6 +59,7 @@ export function registerMetaWebhook(c: Container) {
         !c.env.META_APP_SECRET ||
         !c.env.META_VERIFY_TOKEN ||
         !c.env.META_PAGE_ACCESS_TOKEN ||
+        !c.env.META_APP_ID ||
         url.searchParams.get('hub.verify_token') !== c.env.META_VERIFY_TOKEN
       ) {
         return reply.code(403).send();
@@ -73,6 +74,7 @@ export function registerMetaWebhook(c: Container) {
         !c.env.META_APP_SECRET ||
         !c.env.META_VERIFY_TOKEN ||
         !c.env.META_PAGE_ACCESS_TOKEN ||
+        !c.env.META_APP_ID ||
         !Buffer.isBuffer(body) ||
         !verifySignature(body, Array.isArray(signature) ? signature[0] : signature, c.env.META_APP_SECRET)
       ) {

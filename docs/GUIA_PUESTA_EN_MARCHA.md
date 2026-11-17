@@ -15,8 +15,8 @@ persona (ver `docs/RAILWAY.md`).
 | `OPENAI_MAX_OUTPUT_TOKENS` / `OPENAI_TIMEOUT_MS` | no | `800` / `30000` |
 | `WHATSAPP_ENABLED` | no | `true` en producción; `false` para probar sin WhatsApp |
 | `WHATSAPP_CONTACT_LINK` | no | Link de WhatsApp para ofrecer desde Instagram y Facebook; si se omite, se arma con el número conectado |
-| `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ACCESS_TOKEN` | no | Configurar las tres para habilitar Instagram Direct y Messenger |
-| `META_APP_ID` | no | ID de la app de Meta; solo se ignoran los ecos enviados por esta app |
+| `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ACCESS_TOKEN` | no | Configurar junto con `META_APP_ID` para habilitar Instagram Direct y Messenger |
+| `META_APP_ID` | sí (para Meta) | ID de la app; se requiere para habilitar Meta y filtrar los ecos propios |
 | `PUBLIC_URL`, `PORT`, `TRUST_PROXY` | no | URL pública; `TRUST_PROXY=true` solo detrás de un proxy |
 | `MEDIA_DIR` | no | Carpeta persistente de fotos y videos (`/data/media` en Docker) |
 | `MEDIA_MAX_IMAGE_MB` / `MEDIA_MAX_VIDEO_MB` / `IMPORT_MAX_MB` | no | `10` / `16` / `200` |

@@ -102,6 +102,34 @@ describe('webhook de Meta', () => {
     expect(await db.message.count()).toBe(0);
   });
 
+  it('deshabilita los webhooks de Meta si falta META_APP_ID', async () => {
+    const { c: noAppId } = createTestContainer({}, {
+      META_APP_SECRET: APP_SECRET,
+      META_VERIFY_TOKEN: VERIFY_TOKEN,
+      META_PAGE_ACCESS_TOKEN: PAGE_TOKEN,
+    });
+    const server = await buildServer(noAppId, { panelDir: '/no-existe' });
+    const body = JSON.stringify(instagramMessage({ mid: 'missing-meta-app-id', text: 'Hola' }));
+
+    try {
+      const verify = await server.inject({
+        url: `/webhooks/meta?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=abc123`,
+      });
+      const post = await server.inject({
+        method: 'POST',
+        url: '/webhooks/meta',
+        headers: { 'content-type': 'application/json', 'x-hub-signature-256': sign(body) },
+        payload: body,
+      });
+
+      expect(verify.statusCode).toBe(403);
+      expect(post.statusCode).toBe(401);
+      expect(noAppId.metaTransport.isConnected()).toBe(false);
+    } finally {
+      await server.close();
+    }
+  });
+
   it('devuelve 500 si falla un evento, pero procesa los siguientes', async () => {
     vi.spyOn(c, 'handleInbound').mockRejectedValueOnce(new Error('Falló el primer evento'));
     const response = await postMeta({

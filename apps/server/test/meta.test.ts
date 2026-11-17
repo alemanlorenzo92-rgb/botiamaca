@@ -101,6 +101,36 @@ describe('webhook de Meta', () => {
     expect(await db.message.count()).toBe(0);
   });
 
+  it('devuelve 500 si falla un evento, pero procesa los siguientes', async () => {
+    vi.spyOn(c, 'handleInbound').mockRejectedValueOnce(new Error('Falló el primer evento'));
+    const response = await postMeta({
+      object: 'instagram',
+      entry: [{
+        messaging: [
+          {
+            sender: { id: 'IG_FIRST' },
+            recipient: { id: 'IG_PAGE_1' },
+            timestamp: Date.now(),
+            message: { mid: 'ig-failed-event', text: 'Hola' },
+          },
+          {
+            sender: { id: 'IG_SECOND' },
+            recipient: { id: 'IG_PAGE_1' },
+            timestamp: Date.now(),
+            message: { mid: 'ig-ingested-after-failure', text: 'Quiero hablar con la dueña' },
+          },
+        ],
+      }],
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(await db.message.findUnique({ where: { externalId: 'ig-ingested-after-failure' } })).toMatchObject({
+      direction: 'INBOUND',
+      author: 'CUSTOMER',
+    });
+    expect(await db.message.findUnique({ where: { externalId: 'ig-failed-event' } })).toBeNull();
+  });
+
   it('ingresa mensajes de Instagram, responde por Meta aunque WhatsApp esté desconectado y toma ecos de la dueña', async () => {
     whatsapp.connected = false;
     llm.push(textReply('¡Hola! Seguimos por WhatsApp.'));

@@ -36,7 +36,7 @@ export class MetaTransport implements WhatsAppTransport {
     const url = new URL(`${GRAPH_URL}/${encodeURIComponent(id)}`);
     url.searchParams.set('fields', channel === 'INSTAGRAM' ? 'name' : 'first_name,last_name');
     url.searchParams.set('access_token', this.accessToken);
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
     if (!response.ok) return null;
     const result = (await response.json()) as { name?: string; first_name?: string; last_name?: string };
     return channel === 'INSTAGRAM' ? result.name?.trim() || null : [result.first_name, result.last_name].filter(Boolean).join(' ') || null;

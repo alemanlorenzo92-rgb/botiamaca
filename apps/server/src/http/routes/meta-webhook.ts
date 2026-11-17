@@ -78,48 +78,61 @@ export function registerMetaWebhook(c: Container) {
       ) {
         return reply.code(401).send();
       }
-      reply.code(200).send('EVENT_RECEIVED');
-      void processPayload(c, body)
-        .catch((error: unknown) => request.log.error({ err: error }, 'falló el procesamiento del webhook de Meta'));
+      try {
+        const failed = await processPayload(c, body, (error) =>
+          request.log.error({ err: error }, 'falló el procesamiento de un evento del webhook de Meta'),
+        );
+        return reply.code(failed ? 500 : 200).send(failed ? 'EVENT_PROCESSING_FAILED' : 'EVENT_RECEIVED');
+      } catch (error) {
+        request.log.error({ err: error }, 'falló el procesamiento del webhook de Meta');
+        return reply.code(500).send('EVENT_PROCESSING_FAILED');
+      }
     });
   };
 }
 
-async function processPayload(c: Container, body: Buffer) {
+async function processPayload(c: Container, body: Buffer, onEventError: (error: unknown) => void): Promise<boolean> {
   const payload = JSON.parse(body.toString('utf8')) as MetaPayload;
   const channel: Channel | null = payload.object === 'instagram' ? 'INSTAGRAM' : payload.object === 'page' ? 'MESSENGER' : null;
-  if (!channel) return;
+  if (!channel) return false;
   const prefix = channel === 'INSTAGRAM' ? 'ig:' : 'fb:';
+  let failed = false;
 
   for (const entry of payload.entry ?? []) {
     for (const event of entry.messaging ?? []) {
-      const message = event.message;
-      if (!message?.mid) continue;
-      const fromMe = message.is_echo === true;
-      if (fromMe && String(message.app_id) === c.env.META_APP_ID) continue;
-      const id = (fromMe ? event.recipient?.id : event.sender?.id)?.trim();
-      if (!id) continue;
-      const chatJid = `${prefix}${id}`;
-      let pushName: string | null = null;
-      if (!fromMe && !(await c.db.contact.findUnique({ where: { waJid: chatJid }, select: { id: true } }))) {
-        try {
-          pushName = await c.metaTransport.lookupName(channel, id);
-        } catch {
-          pushName = null;
+      try {
+        const message = event.message;
+        if (!message?.mid) continue;
+        const fromMe = message.is_echo === true;
+        if (fromMe && String(message.app_id) === c.env.META_APP_ID) continue;
+        const id = (fromMe ? event.recipient?.id : event.sender?.id)?.trim();
+        if (!id) continue;
+        const chatJid = `${prefix}${id}`;
+        let pushName: string | null = null;
+        if (!fromMe && !(await c.db.contact.findUnique({ where: { waJid: chatJid }, select: { id: true } }))) {
+          try {
+            pushName = await c.metaTransport.lookupName(channel, id);
+          } catch {
+            pushName = null;
+          }
         }
+        const attachment = message.attachments?.[0];
+        await c.handleInbound({
+          externalId: message.mid,
+          chatJid,
+          altJid: null,
+          fromMe,
+          pushName,
+          type: attachment ? inboundType(attachment.type) : message.text ? 'TEXT' : 'OTHER',
+          text: typeof message.text === 'string' ? message.text : null,
+          mediaMime: attachment?.payload?.mime_type ?? null,
+          timestamp: typeof event.timestamp === 'number' ? new Date(event.timestamp) : new Date(),
+        });
+      } catch (error) {
+        failed = true;
+        onEventError(error);
       }
-      const attachment = message.attachments?.[0];
-      await c.handleInbound({
-        externalId: message.mid,
-        chatJid,
-        altJid: null,
-        fromMe,
-        pushName,
-        type: attachment ? inboundType(attachment.type) : message.text ? 'TEXT' : 'OTHER',
-        text: typeof message.text === 'string' ? message.text : null,
-        mediaMime: attachment?.payload?.mime_type ?? null,
-        timestamp: typeof event.timestamp === 'number' ? new Date(event.timestamp) : new Date(),
-      });
     }
   }
+  return failed;
 }

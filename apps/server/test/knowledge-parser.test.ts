@@ -45,6 +45,9 @@ describe('parser de chats exportados', () => {
       ['Hola Marta! Es para mi hija Sofía, lo retira de parte de Laura Gómez', 'Hola [nombre]! Es para mi hija [nombre], lo retira de parte de [nombre]'],
       ['Gracias Ana Te paso el comprobante', 'Gracias [nombre] Te paso el comprobante'],
       ['Seguime en @juani.ok', 'Seguime en [usuario]'],
+      ['Envialo a Belgrano 450', 'Envialo a [dirección]'],
+      ['Se entrega en 10 días hábiles en Córdoba', 'Se entrega en 10 días hábiles en Córdoba'],
+      ['Entrega en 48 hs y el envío a $3500 en Córdoba', 'Entrega en 48 hs y el envío a $3500 en Córdoba'],
       ['Hola Cliente 1! Buenas tardes, el Glitter Bar para 50 personas el sábado está disponible', 'Hola Cliente 1! Buenas tardes, el Glitter Bar para 50 personas el sábado está disponible'],
       ['Hola Buenas! Retiro en el local o envío por correo, mínimo 10 unidades', 'Hola Buenas! Retiro en el local o envío por correo, mínimo 10 unidades'],
     ];

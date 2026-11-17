@@ -1,6 +1,11 @@
 /** Quita datos personales de un texto antes de guardarlo o mandarlo a OpenAI. */
 const STREET = String.raw`(?:calle|av(?:enida|da)?\.?|bv\.?|bulevar|boulevard|pasaje|psje\.?|diagonal|camino)`;
-const RULES: [RegExp, string][] = [
+/** Lo que sigue a "entrega en…" solo es dirección si tiene un nombre propio y no es un plazo o cantidad. */
+const NOT_ADDRESS = /\d+\s*(?:d[ií]as?|hs?|horas?|semanas?|mes(?:es)?|minutos?|min|unidades?|u|personas?|%)(?!\p{L})|\$\s*\d/iu;
+const addressAfter = (m: string, lead: string, sep: string, rest: string) =>
+  /\p{Lu}/u.test(rest) && !NOT_ADDRESS.test(rest) ? `${lead}${sep}[dirección]` : m;
+
+const RULES: [RegExp, string | ((m: string, ...g: string[]) => string)][] = [
   [/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]'],
   [/(?<![\w.@])@[\w.]{3,30}/g, '[usuario]'],
   [/\b\d{22}\b/g, '[cbu]'],
@@ -12,7 +17,7 @@ const RULES: [RegExp, string][] = [
   [new RegExp(String.raw`(?<!\p{L})${STREET}\s+[\p{L}\d°º.' ]{2,40}?\s+(?:n[°º.]?\s*)?\d{1,5}(?!\d)`, 'giu'), '[dirección]'],
   [/(?<!\p{L})(piso|dpto\.?|depto\.?|departamento)\s*\d{1,3}\s*[°º]?\s*(?:[a-z](?!\p{L}))?/giu, '[dirección]'],
   [/(?<!\p{L})(c\.?\s?p\.?|c[oó]digo postal)\s*:?\s*[a-z]?\d{4}[a-z]{0,3}(?!\p{L})/giu, '$1 [código postal]'],
-  [/(?<!\p{L})(direcci[oó]n|domicilio|vivo en|env[ií]a(?:lo|melo|mela|la)? a|entreg(?:a|ar|alo) en)(\s*(?:es)?\s*:?\s*)[^\n.,;!?]*\d[^\n.,;!?]*/giu, '$1$2[dirección]'],
+  [/(?<!\p{L})(direcci[oó]n|domicilio|vivo en|env[ií]a(?:lo|melo|mela|la)? a|entreg(?:a|ar|alo) en)(\s*(?:es)?\s*:?\s*)([^\n.,;!?]*\d[^\n.,;!?]*)/giu, (m, lead, sep, rest) => addressAfter(m, lead!, sep!, rest!)],
   [/(?<!\p{L})([Bb]arrio|[Bb]° ?)\s*\p{Lu}[\p{L}'’]*(?:\s+\p{Lu}[\p{L}'’]*){0,2}/gu, '$1 [barrio]'],
 ];
 
@@ -56,7 +61,7 @@ function escape(s: string) {
 
 export function anonymize(text: string, names: Map<string, string> = new Map()): string {
   let out = text;
-  for (const [re, label] of RULES) out = out.replace(re, label);
+  for (const [re, label] of RULES) out = typeof label === 'string' ? out.replace(re, label) : out.replace(re, label);
   // Nombres de participantes (completos y primer nombre) por su alias.
   for (const [name, alias] of names) {
     const parts = [name, ...name.split(/\s+/).filter((p) => p.length > 2)];

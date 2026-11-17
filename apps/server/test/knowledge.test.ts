@@ -110,6 +110,17 @@ describe('importación de chats', () => {
 });
 
 describe('conocimiento', () => {
+  it('un conocimiento casi idéntico pero con otro valor se revisa como contradicción, no como duplicado', async () => {
+    const same = Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0));
+    const { c, llm } = createTestContainer({ embedder: { embed: async (texts: string[]) => texts.map(() => same) } });
+    expect(await c.knowledge.addItem(item(), null)).toBe('created');
+    expect(await c.knowledge.addItem(item({ excerpt: 'otra vez' }), null)).toBe('duplicate');
+    llm.push(textReply(JSON.stringify({ contradicts: true, note: 'diez vs veinte' })));
+    expect(await c.knowledge.addItem(item({ content: 'El mínimo de compra mayorista es de veinte unidades' }), null)).toBe('conflict');
+    llm.push(textReply(JSON.stringify({ contradicts: false, note: '' })));
+    expect(await c.knowledge.addItem(item({ content: 'El mínimo de compra mayorista es de diez unidades, surtidas' }), null)).toBe('duplicate');
+  });
+
   it('extrae, une duplicados, marca contradicciones y solo usa lo aprobado en las respuestas', async () => {
     const { c, llm, transport } = createTestContainer();
     const a = await importText(c, CHAT_A);

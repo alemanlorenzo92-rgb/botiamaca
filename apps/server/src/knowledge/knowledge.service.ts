@@ -3,6 +3,7 @@ import type { Response } from 'openai/resources/responses/responses';
 import { z } from 'zod';
 import type { LlmClient } from '../ai/orchestrator.js';
 import type { Logger } from '../core/logger.js';
+import { normalize } from '../core/text.js';
 import { anonymize } from './anonymize.js';
 import { toVectorLiteral, type Embedder } from './embedder.js';
 
@@ -189,6 +190,10 @@ export class KnowledgeService {
     return pairs.length;
   }
 
+  private conflictVerdict(existing: Neighbor, title: string, content: string) {
+    return this.ask(CONFLICT_INSTRUCTIONS, `A (existente): ${existing.title}\n${existing.content}\n\nB (nuevo): ${title}\n${content}`, 'conflict', CONFLICT_JSON, conflictSchema);
+  }
+
   private async neighbors(vector: number[], limit = 3): Promise<Neighbor[]> {
     const v = toVectorLiteral(vector);
     return this.db.$queryRaw<Neighbor[]>`
@@ -205,22 +210,21 @@ export class KnowledgeService {
     const [vector] = await this.embedder.embed([`${item.title}\n${content}`]);
     const near = await this.neighbors(vector!);
     const top = near[0];
-    if (top && top.similarity >= DUPLICATE_SIMILARITY) {
+    let conflict: { id: string; note: string } | null = null;
+    // Muy parecido pero con otro texto (p. ej. otro valor): primero se pregunta si contradice.
+    if (top && top.similarity >= DUPLICATE_SIMILARITY && top.kind === item.kind && top.status !== 'REJECTED' && normalize(top.content) !== normalize(content)) {
+      const verdict = await this.conflictVerdict(top, item.title, content);
+      if (verdict.contradicts) conflict = { id: top.id, note: verdict.note };
+    }
+    if (!conflict && top && top.similarity >= DUPLICATE_SIMILARITY) {
       await this.db.knowledgeSource.create({ data: { documentId: top.id, chatId, excerpt } });
       if (top.status === 'REJECTED') return 'rejected';
       await this.db.$executeRaw`UPDATE knowledge_documents SET confidence = LEAST(1, confidence + 0.1), updated_at = now() WHERE id = ${top.id}::uuid`;
       return 'duplicate';
     }
-    let conflict: { id: string; note: string } | null = null;
-    for (const n of near) {
+    for (const n of conflict ? [] : near) {
       if (n.similarity < CONFLICT_CHECK_SIMILARITY || n.kind !== item.kind || n.status === 'REJECTED') continue;
-      const verdict = await this.ask(
-        CONFLICT_INSTRUCTIONS,
-        `A (existente): ${n.title}\n${n.content}\n\nB (nuevo): ${item.title}\n${content}`,
-        'conflict',
-        CONFLICT_JSON,
-        conflictSchema,
-      );
+      const verdict = await this.conflictVerdict(n, item.title, content);
       if (verdict.contradicts) {
         conflict = { id: n.id, note: verdict.note };
         break;

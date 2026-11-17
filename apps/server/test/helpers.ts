@@ -123,7 +123,7 @@ export function toolCalls(...calls: [string, Record<string, unknown>][]): Respon
   } as unknown as Response;
 }
 
-export function createTestContainer() {
+export function createTestContainer(overrides: Partial<Parameters<typeof createContainer>[2]> = {}) {
   const env = loadEnv({
     NODE_ENV: 'test',
     DATABASE_URL: TEST_DATABASE_URL,
@@ -135,7 +135,7 @@ export function createTestContainer() {
   const transport = new FakeTransport();
   const llm = new FakeLlm();
   const storage = new MemoryStorage();
-  const c = createContainer(env, logger, { db, transport, llm, storage });
+  const c = createContainer(env, logger, { db, transport, llm, storage, ...overrides });
   return { c, transport, llm, storage };
 }
 

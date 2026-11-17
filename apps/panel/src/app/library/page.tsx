@@ -148,6 +148,13 @@ function Tutorials({ assets, products }: { assets: Asset[]; products: ProductOpt
             </select>
           </label>
           <label>
+            Servicio
+            <select value={f.service} onChange={(e) => setF({ ...f, service: e.target.value })}>
+              <option value="">—</option>
+              {Object.entries(SERVICES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </label>
+          <label>
             Videos o fotos
             <select multiple value={f.mediaIds} onChange={(e) => setF({ ...f, mediaIds: [...e.target.selectedOptions].map((o) => o.value) })}>
               {assets.filter((a) => a.active).map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}

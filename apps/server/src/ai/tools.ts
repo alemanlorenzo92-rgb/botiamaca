@@ -42,7 +42,7 @@ export const MAX_MEDIA_PER_REPLY = 3;
 export class ToolInputError extends Error {}
 
 const NO_DATA =
-  'Sin dato cargado. No lo inventes ni lo supongas: decile al cliente que no tenés ese dato y ofrecé que lo atienda la dueña.';
+  'Sin dato. No lo inventes ni lo supongas: decile al cliente, sin hablar de sistemas, que eso se lo confirma la dueña.';
 
 const BUSINESS_TOPICS = {
   business_profile: 'Datos generales del negocio (nombre, dirección, horarios, redes)',

@@ -205,6 +205,7 @@ export class AiOrchestrator implements AiResponder {
           store: false,
           safety_identifier: sha256(ctx.contact.id).slice(0, 32),
           ...(reasoning ? { reasoning: { effort: 'low' }, include: ['reasoning.encrypted_content'] } : {}),
+          ...(model.startsWith('gpt-5') ? { text: { verbosity: 'low' } } : {}),
           ...(ai.temperature !== null && !reasoning ? { temperature: ai.temperature } : {}),
         };
         let response: Response;

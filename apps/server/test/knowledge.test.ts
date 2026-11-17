@@ -228,5 +228,7 @@ describe('historial de WhatsApp al vincular', () => {
     await db.contact.create({ data: { waJid: '999@lid', waAltJid: venta, botMuted: true } });
     const chat = [0, 1, 2, 3].map((i) => msg(venta, i % 2 === 1, `Mensaje ${i}`, i));
     expect(await c.chatImport.importHistory(chat)).toEqual({ imported: 0 });
+    const viejo = [0, 1, 2, 3].map((i) => ({ ...msg('5493514444444@s.whatsapp.net', i % 2 === 1, `Viejo ${i}`, i), timestamp: new Date(Date.UTC(2024, 0, 1, 10, i)) }));
+    expect(await c.chatImport.importHistory(viejo)).toEqual({ imported: 0 });
   });
 });

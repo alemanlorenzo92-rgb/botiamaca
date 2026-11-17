@@ -102,12 +102,13 @@ export class WhatsAppGateway implements WhatsAppTransport {
     const sock = makeWASocket({
       ...(version ? { version } : {}),
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, waLogger) },
-      browser: Browsers.macOS('Desktop'),
+      // Con 'Desktop' y syncFullHistory, WhatsApp corta con 428 antes del QR; con 'Chrome' el QR sale y se pide el historial completo.
+      browser: Browsers.macOS('Chrome'),
       logger: waLogger,
       markOnlineOnConnect: false,
-      // syncFullHistory: true hace que WhatsApp corte la conexión (428) antes del QR con esta versión de Baileys.
-      // Sin eso, WhatsApp igual manda el historial reciente al vincular, y el bot aprende de ahí.
-      syncFullHistory: false,
+      syncFullHistory: true,
+      // Por defecto Baileys descarta las tandas FULL del historial; el bot aprende de todas (no responde ninguna).
+      shouldSyncHistoryMessage: () => true,
       generateHighQualityLinkPreview: false,
     });
     this.sock = sock;

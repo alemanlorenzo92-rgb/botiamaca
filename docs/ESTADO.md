@@ -120,7 +120,7 @@ En esa prueba el bot les respondió a contactos personales del celular. Por eso 
 
 ## Falta probar (necesita credenciales)
 
-- **WhatsApp real:** vincular un número de prueba y verificar recepción, respuestas, fotos y videos.
+- **WhatsApp real:** envío de fotos y videos de la biblioteca, reconexión tras un corte y el número de Male Style.
 
 ## Límites conocidos
 

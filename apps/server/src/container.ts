@@ -23,6 +23,10 @@ import { MediaService } from './media/media.service.js';
 import { LocalMediaStorage } from './media/storage.js';
 import { DisabledTransport, WhatsAppGateway } from './whatsapp/gateway.js';
 import type { MediaStorage } from './media/storage.js';
+import { localEmbedder, openAiEmbedder, type Embedder } from './knowledge/embedder.js';
+import { ChatImportService } from './knowledge/import.service.js';
+import { JobRunner } from './knowledge/jobs.js';
+import { KnowledgeService } from './knowledge/knowledge.service.js';
 import type { InboundWhatsAppMessage, WhatsAppTransport } from './whatsapp/transport.js';
 
 export interface ContainerOverrides {
@@ -30,6 +34,7 @@ export interface ContainerOverrides {
   transport?: WhatsAppTransport;
   llm?: LlmClient | null;
   storage?: MediaStorage;
+  embedder?: Embedder;
 }
 
 /** Arma todos los servicios. Un solo proceso: Baileys exige una única instancia. */
@@ -64,12 +69,15 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const leads = new LeadsService(db, bus);
   const followups = new FollowupsService(db, bus, logger);
 
-  const llm =
-    overrides.llm !== undefined
-      ? overrides.llm
-      : env.OPENAI_API_KEY
-        ? openAiLlm(new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 1, timeout: env.OPENAI_TIMEOUT_MS }))
-        : null;
+  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 1, timeout: env.OPENAI_TIMEOUT_MS }) : null;
+  const llm = overrides.llm !== undefined ? overrides.llm : openai ? openAiLlm(openai) : null;
+  const embedder = overrides.embedder ?? (openai ? openAiEmbedder(openai, env.OPENAI_EMBEDDING_MODEL) : localEmbedder);
+  const jobs = new JobRunner(db, logger);
+  const knowledge = new KnowledgeService(db, llm, embedder, logger, { model: env.OPENAI_MODEL });
+  const chatImport = new ChatImportService(db, media, jobs, logger);
+  jobs.on('knowledge.extract', async (payload) => {
+    await knowledge.extractChat((payload as { chatId: string }).chatId);
+  });
   const ai = new AiOrchestrator(
     llm,
     { db, catalog, cart, leads, followups, handoff, settings, audit, media, sender, services },
@@ -79,6 +87,7 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
       requestTimeoutMs: env.OPENAI_TIMEOUT_MS,
     },
     logger,
+    knowledge,
   );
   const guard = new ReplyGuard(db, settings);
   const worker = new ReplyWorker(db, guard, ai, sender, handoff, settings, logger);
@@ -109,6 +118,9 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     catalogAdmin,
     services,
     media,
+    jobs,
+    knowledge,
+    chatImport,
     cart,
     leads,
     followups,

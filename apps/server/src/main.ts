@@ -26,6 +26,7 @@ async function start() {
   if (recovered) logger.info({ recovered }, 'respuestas pendientes recuperadas');
 
   c.followups.startScheduler();
+  c.jobs.start();
 
   timers.push(
     setInterval(() => void c.db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {}), 60 * 60_000),
@@ -39,6 +40,7 @@ async function start() {
     timers.forEach(clearInterval);
     c.worker.stop();
     c.followups.stop();
+    await c.jobs.stop().catch(() => {});
     await app.close().catch(() => {});
     await c.worker.drain().catch(() => {});
     await c.gateway?.stop().catch(() => {});

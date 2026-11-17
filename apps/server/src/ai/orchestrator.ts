@@ -10,6 +10,7 @@ import { sha256 } from '../core/crypto.js';
 import type { Logger } from '../core/logger.js';
 import { BUSINESS_SETTING_KEYS } from '../core/settings.js';
 import { truncate } from '../core/text.js';
+import type { KnowledgeService, RetrievedKnowledge } from '../knowledge/knowledge.service.js';
 import { buildInstructions } from './prompt.js';
 import { openAiTools, runTool, type ToolContext, type ToolDeps } from './tools.js';
 
@@ -105,7 +106,29 @@ export class AiOrchestrator implements AiResponder {
     private readonly deps: ToolDeps,
     private readonly config: OrchestratorConfig,
     private readonly logger: Logger,
+    private readonly knowledge: KnowledgeService | null = null,
   ) {}
+
+  private async retrieve(recent: Message[], toolLog: ToolLog[]): Promise<RetrievedKnowledge | null> {
+    if (!this.knowledge) return null;
+    const query = recent
+      .filter((m) => m.author === 'CUSTOMER' && m.text)
+      .slice(0, 3)
+      .map((m) => m.text)
+      .join('\n');
+    if (!query) return null;
+    const t = Date.now();
+    try {
+      const found = await this.knowledge.retrieve(query);
+      // Trazabilidad: qué conocimiento y ejemplos se usaron en esta respuesta.
+      toolLog.push({ name: 'rag', args: { documents: found.documents.map((d) => d.id), examples: found.examples.map((e) => e.id) }, ok: true, ms: Date.now() - t });
+      return found;
+    } catch (error) {
+      this.logger.error({ err: error }, 'no se pudo recuperar conocimiento');
+      toolLog.push({ name: 'rag', args: null, ok: false, error: error instanceof Error ? error.message : String(error), ms: Date.now() - t });
+      return null;
+    }
+  }
 
   async respond(conversationId: string): Promise<{ text: string | null }> {
     const { db, settings } = this.deps;
@@ -154,6 +177,7 @@ export class AiOrchestrator implements AiResponder {
         businessProfile: business.business_profile ?? null,
         configuredTopics: BUSINESS_SETTING_KEYS.filter((k) => business[k] !== undefined && business[k] !== null),
         now: new Date(),
+        knowledge: await this.retrieve(recent, toolLog),
       });
       const input = historyToInput(recent.reverse());
       if (!input.length) {

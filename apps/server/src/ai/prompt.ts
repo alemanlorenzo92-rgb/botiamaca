@@ -1,5 +1,6 @@
 import { DEFAULT_TIME_ZONE, isWithinBusinessHours } from '../core/hours.js';
 import type { AiSetting, Contact, Prisma } from '@prisma/client';
+import type { RetrievedKnowledge } from '../knowledge/knowledge.service.js';
 
 export const TIME_ZONE = DEFAULT_TIME_ZONE;
 
@@ -44,9 +45,10 @@ export interface PromptInput {
   businessProfile: Prisma.JsonValue | null;
   configuredTopics: string[];
   now: Date;
+  knowledge?: RetrievedKnowledge | null;
 }
 
-export function buildInstructions({ ai, contact, businessProfile, configuredTopics, now }: PromptInput): string {
+export function buildInstructions({ ai, contact, businessProfile, configuredTopics, now, knowledge }: PromptInput): string {
   const sections = [BASE_RULES];
   if (ai.personality.trim()) sections.push(`Personalidad:\n${ai.personality.trim()}`);
   if (ai.instructions.trim()) sections.push(`Instrucciones del negocio:\n${ai.instructions.trim()}`);
@@ -80,5 +82,17 @@ export function buildInstructions({ ai, contact, businessProfile, configuredTopi
     contact.memorySummary ? `- Lo que sabemos de conversaciones anteriores: ${contact.memorySummary}` : null,
   ].filter(Boolean);
   sections.push(`Cliente:\n${profile.join('\n')}`);
+
+  if (knowledge?.documents.length) {
+    const docs = knowledge.documents.map(
+      (d) => `- [${d.kind}] ${d.title}: ${d.content}${d.temporal ? ' (dato que puede haber cambiado: confirmalo con las herramientas antes de afirmarlo)' : ''}`,
+    );
+    sections.push(`Conocimiento aprendido (aprobado por la dueña, solo lo relevante a esta consulta):\n${docs.join('\n')}`);
+  }
+  if (knowledge?.examples.length) {
+    sections.push(
+      `Ejemplos reales de cómo responde la dueña (imitá el tono, NO copies precios ni datos de estos ejemplos):\n${knowledge.examples.map((e) => e.text).join('\n---\n')}`,
+    );
+  }
   return sections.join('\n\n');
 }

@@ -105,13 +105,14 @@ export interface RetrievedKnowledge {
 export class KnowledgeService {
   constructor(
     private readonly db: PrismaClient,
-    private readonly llm: LlmClient,
+    private readonly llm: LlmClient | null,
     private readonly embedder: Embedder,
     private readonly logger: Logger,
     private readonly cfg: { model: string; timeoutMs?: number },
   ) {}
 
   private async ask<T>(instructions: string, input: string, name: string, schema: Record<string, unknown>, parser: z.ZodType<T>): Promise<T> {
+    if (!this.llm) throw new Error('Falta OPENAI_API_KEY: no se puede extraer conocimiento');
     const res = await this.llm.create(
       { model: this.cfg.model, instructions, input, text: jsonSchema(name, schema), max_output_tokens: 4000, store: false },
       { signal: AbortSignal.timeout(this.cfg.timeoutMs ?? 120_000) },

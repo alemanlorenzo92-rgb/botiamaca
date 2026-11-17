@@ -81,7 +81,7 @@ export class CatalogAdminService {
   }
 
   async createProduct(input: ProductInput) {
-    const product = await this.db.product.create({ data: { name: input.name.trim(), published: false } });
+    const product = await this.db.product.create({ data: { name: input.name.trim() } });
     try {
       return await this.updateProduct(product.id, input);
     } catch (error) {

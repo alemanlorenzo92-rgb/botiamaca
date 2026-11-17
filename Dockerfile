@@ -22,4 +22,4 @@ ENV MEDIA_DIR=/data/media
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["sh", "-c", "cd apps/server && node_modules/.bin/prisma migrate deploy && exec node dist/main.js"]
+CMD ["sh", "-c", "cd apps/server && node_modules/.bin/prisma migrate deploy && node dist/cli.js seed && exec node dist/main.js"]

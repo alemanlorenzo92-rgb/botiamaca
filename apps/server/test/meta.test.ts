@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildInstructions } from '../src/ai/prompt.js';
 import { buildServer } from '../src/http/server.js';
+import { MetaTransport } from '../src/meta/meta-transport.js';
 import { createTestContainer, db, resetDb, textReply, type FakeLlm, type FakeTransport, type TestContainer } from './helpers.js';
 
 const APP_SECRET = 'meta-test-secret';
@@ -226,6 +227,28 @@ describe('webhook de Meta', () => {
     expect(instagram).toContain('https://wa.me/5493584123456');
     expect(messenger).toContain('https://wa.me/5493584123456');
     expect(messenger).not.toContain('+54 9 3584123456');
+  });
+
+  it('divide textos largos de Instagram en partes de hasta 1000 bytes', async () => {
+    fetchCalls = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        fetchCalls.push({ url: String(input), init });
+        return new Response(JSON.stringify({ message_id: `segment-${fetchCalls.length}` }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+    );
+    const text = 'ñ'.repeat(1250);
+    const result = await new MetaTransport(PAGE_TOKEN).sendText('ig:IG_CUSTOMER_1', text);
+    const parts = fetchCalls.map(({ init }) => JSON.parse(String(init?.body)).message.text as string);
+
+    expect(fetchCalls).toHaveLength(3);
+    expect(parts.every((part) => Buffer.byteLength(part, 'utf8') <= 1000)).toBe(true);
+    expect(parts.join('')).toBe(text);
+    expect(result.externalId).toBe('segment-3');
   });
 
   it('no envía seguimientos automáticos a una conversación de Instagram elegible', async () => {

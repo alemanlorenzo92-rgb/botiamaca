@@ -66,9 +66,11 @@ function escape(s: string) {
 export const BUSINESS_NAME = 'Male Style';
 
 export function anonymize(text: string, names: Map<string, string> = new Map()): string {
-  const kept: string[] = [];
-  let out = text.replace(new RegExp(`(?<![\\p{L}])${escape(BUSINESS_NAME)}(?![\\p{L}])`, 'giu'), (m) => `\uE000${kept.push(m) - 1}\uE000`);
+  let out = text;
   for (const [re, label] of RULES) out = typeof label === 'string' ? out.replace(re, label) : out.replace(re, label);
+  // Se protege después de las reglas: el marcador no tiene dígitos ni letras que confundan a otras reglas.
+  const kept: string[] = [];
+  out = out.replace(new RegExp(`(?<![\\p{L}])${escape(BUSINESS_NAME)}(?![\\p{L}])`, 'giu'), (m) => (kept.push(m), '\uE000'));
   // Nombres de participantes (completos y primer nombre) por su alias.
   for (const [name, alias] of names) {
     const parts = [name, ...name.split(/\s+/).filter((p) => p.length > 2)];
@@ -79,5 +81,5 @@ export function anonymize(text: string, names: Map<string, string> = new Map()):
   }
   // Nombres de terceros mencionados en el texto (hija, amiga, quien retira…), sin tocar el resto de la frase.
   for (const re of NAME_CONTEXTS) out = out.replace(re, (m: string, ...g: string[]) => m.slice(0, m.length - g[2]!.length) + redactName(g[2]!));
-  return out.replace(/\uE000(\d+)\uE000/g, (_, i: string) => kept[Number(i)]!);
+  return out.replace(/\uE000/g, () => kept.shift()!);
 }

@@ -191,3 +191,31 @@ describe('conocimiento', () => {
     expect(await db.knowledgeDocument.count()).toBe(1);
   });
 });
+
+describe('historial de WhatsApp al vincular', () => {
+  const msg = (jid: string, fromMe: boolean, text: string, minute: number) => ({
+    externalId: `${jid}-${minute}`, chatJid: jid, altJid: null, fromMe, pushName: fromMe ? null : 'Juana Pérez',
+    type: 'TEXT' as const, text, mediaMime: null, timestamp: new Date(Date.UTC(2026, 10, 10, 10, minute)),
+  });
+
+  it('aprende de los chats con respuestas de la dueña, anonimiza, no responde y no duplica', async () => {
+    const { c, transport } = createTestContainer();
+    const venta = '5493511111111@s.whatsapp.net';
+    const sinDuena = '5493512222222@s.whatsapp.net';
+    const history = [
+      msg(venta, false, 'Hola! soy Juana, vendés por mayor?', 0),
+      msg(venta, true, 'Hola Juana! Sí, el mínimo mayorista es de diez unidades', 1),
+      msg(venta, false, 'Genial, mi cel es 351 555 1234', 2),
+      msg(venta, true, 'Te espero 💖', 3),
+      ...[0, 1, 2, 3].map((i) => msg(sinDuena, false, `Promo ${i}`, i)),
+    ];
+    expect(await c.chatImport.importHistory(history, 'Male Style')).toEqual({ imported: 1 });
+    const stored = await db.importedMessage.findMany({ orderBy: { position: 'asc' } });
+    expect(stored).toHaveLength(4);
+    expect(stored.map((m) => m.author)).toEqual(['Cliente 1', 'Dueña', 'Cliente 1', 'Dueña']);
+    expect(stored.some((m) => /Juana|351 555/.test(m.text ?? ''))).toBe(false);
+    expect(await db.job.count({ where: { type: 'knowledge.extract' } })).toBe(1);
+    expect(transport.sent).toHaveLength(0);
+    expect(await c.chatImport.importHistory(history, 'Male Style')).toEqual({ imported: 0 });
+  });
+});

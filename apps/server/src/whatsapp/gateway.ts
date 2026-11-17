@@ -43,6 +43,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
     private readonly logger: Logger,
     private readonly onMessage: (msg: InboundWhatsAppMessage) => Promise<void>,
     private readonly onConnected: () => void = () => {},
+    private readonly onHistory: (messages: InboundWhatsAppMessage[], ownerName: string | null) => Promise<unknown> = async () => {},
   ) {}
 
   getStatus() {
@@ -135,6 +136,13 @@ export class WhatsAppGateway implements WhatsAppTransport {
           this.scheduleReconnect(delay);
         }
       })().catch((error: unknown) => this.logger.error({ err: error }, 'error en connection.update'));
+    });
+
+    // Historial que WhatsApp manda al vincular: no se responde, solo se usa para aprender.
+    sock.ev.on('messaging-history.set', ({ messages }) => {
+      const mapped = messages.map(mapWAMessage).filter((m): m is InboundWhatsAppMessage => m !== null);
+      if (!mapped.length) return;
+      void this.onHistory(mapped, sock.user?.name ?? null).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
     });
 
     sock.ev.on('messages.upsert', ({ messages, type }) => {

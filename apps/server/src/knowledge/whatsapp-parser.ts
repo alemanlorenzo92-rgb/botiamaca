@@ -1,7 +1,7 @@
 /**
  * Parser de chats exportados desde WhatsApp ("Exportar chat"), formatos Android e iOS en español e inglés.
- * Baileys no permite descargar el historial completo de forma confiable (solo la sincronización inicial
- * del dispositivo vinculado), por eso el aprendizaje parte de exports que la dueña sube al panel.
+ * Además de estos exports, el bot aprende del historial que WhatsApp manda al vincular el número
+ * (`ChatImportService.importHistory`), que trae solo los mensajes recientes.
  */
 export interface ParsedMessage {
   sentAt: Date;

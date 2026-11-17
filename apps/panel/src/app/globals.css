@@ -122,3 +122,4 @@ td.actions button { margin-left: 4px; }
   .grid2 { grid-template-columns: 1fr; }
   td.actions { white-space: normal; }
 }
+p.badge { display: block; white-space: normal; width: fit-content; max-width: 100%; }

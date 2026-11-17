@@ -105,7 +105,8 @@ export class WhatsAppGateway implements WhatsAppTransport {
       browser: Browsers.macOS('Desktop'),
       logger: waLogger,
       markOnlineOnConnect: false,
-      syncFullHistory: false,
+      // Historial completo al vincular: el bot aprende de todos los chats que WhatsApp mande (no responde ninguno).
+      syncFullHistory: true,
       generateHighQualityLinkPreview: false,
     });
     this.sock = sock;

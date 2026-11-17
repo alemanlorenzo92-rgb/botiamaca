@@ -10,8 +10,8 @@ import type { InboundWhatsAppMessage } from '../whatsapp/transport.js';
 import { parseWhatsAppExport, type ParsedChat } from './whatsapp-parser.js';
 
 export const OWNER_ALIAS = 'Dueña';
-/** Del historial que manda WhatsApp al vincular, se aprende de los últimos mensajes de cada chat. */
-const HISTORY_MAX_MESSAGES = 200;
+/** Del historial que manda WhatsApp al vincular se usan hasta 5000 mensajes por chat (la extracción los parte en tramos). */
+const HISTORY_MAX_MESSAGES = 5000;
 const HISTORY_MIN_MESSAGES = 4;
 
 export class ImportError extends Error {

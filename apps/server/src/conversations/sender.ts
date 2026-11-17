@@ -17,9 +17,14 @@ export class MessageSender {
    */
   private async createOutbound(data: Prisma.MessageUncheckedCreateInput): Promise<Message> {
     return this.db.$transaction(async (tx) => {
-      if (data.author === 'AI') {
-        const [row] = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM conversations WHERE id = ${data.conversationId}::uuid FOR UPDATE`;
-        if (row?.status !== 'AI_ACTIVE') {
+      if (data.author === 'AI' || data.author === 'SYSTEM') {
+        const [row] = await tx.$queryRaw<{ status: string; bot_muted: boolean }[]>`
+          SELECT c.status, ct.bot_muted FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
+          WHERE c.id = ${data.conversationId}::uuid FOR UPDATE OF c`;
+        if (row?.bot_muted) {
+          return tx.message.create({ data: { ...data, status: 'DISCARDED', error: 'Contacto marcado para que el bot no le responda' } });
+        }
+        if (data.author === 'AI' && row?.status !== 'AI_ACTIVE') {
           return tx.message.create({ data: { ...data, status: 'DISCARDED', error: `Conversación en estado ${row?.status ?? 'inexistente'}` } });
         }
       }

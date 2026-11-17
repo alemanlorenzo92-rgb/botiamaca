@@ -162,6 +162,11 @@ describe('atención humana', () => {
     await customerSays(c, 'Me voy');
     expect(llm.calls).toHaveLength(0);
     expect(transport.sent).toHaveLength(0);
+    await customerSays(c, 'Quiero hablar con una persona');
+    expect(transport.sent).toHaveLength(0);
+    const id = (await conversation()).id;
+    const img = await c.sender.sendText({ conversationId: id, text: 'Respuesta tardía de la IA', author: 'AI' });
+    expect(img.status).toBe('DISCARDED');
   });
 
   it('la dueña toma la conversación mientras la IA arma la respuesta: el texto de la IA no sale', async () => {

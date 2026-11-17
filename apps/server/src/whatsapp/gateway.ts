@@ -105,8 +105,9 @@ export class WhatsAppGateway implements WhatsAppTransport {
       browser: Browsers.macOS('Desktop'),
       logger: waLogger,
       markOnlineOnConnect: false,
-      // Historial completo al vincular: el bot aprende de todos los chats que WhatsApp mande (no responde ninguno).
-      syncFullHistory: true,
+      // syncFullHistory: true hace que WhatsApp corte la conexión (428) antes del QR con esta versión de Baileys.
+      // Sin eso, WhatsApp igual manda el historial reciente al vincular, y el bot aprende de ahí.
+      syncFullHistory: false,
       generateHighQualityLinkPreview: false,
     });
     this.sock = sock;

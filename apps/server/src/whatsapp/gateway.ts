@@ -96,7 +96,8 @@ export class WhatsAppGateway implements WhatsAppTransport {
       version = undefined;
     }
 
-    // El nombre de la cuenta es por vinculación: no se arrastra el de una sesión anterior.
+    // El nombre de la cuenta es por vinculación: lo pendiente se procesa con el de la sesión anterior y después se reinicia.
+    void this.flushHistory();
     this.historyOwner = null;
     const sock = makeWASocket({
       ...(version ? { version } : {}),
@@ -153,13 +154,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
         if (mapped) this.historyBuffer.push(mapped);
       }
       if (this.historyTimer) clearTimeout(this.historyTimer);
-      this.historyTimer = setTimeout(() => {
-        this.historyTimer = null;
-        const batch = this.historyBuffer;
-        this.historyBuffer = [];
-        if (!batch.length) return;
-        void this.onHistory(batch, this.historyOwner).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
-      }, HISTORY_QUIET_MS);
+      this.historyTimer = setTimeout(() => this.flushHistory(), HISTORY_QUIET_MS);
     });
 
     sock.ev.on('messages.upsert', ({ messages, type }) => {
@@ -176,6 +171,15 @@ export class WhatsAppGateway implements WhatsAppTransport {
         }
       })();
     });
+  }
+
+  private flushHistory(): Promise<unknown> {
+    if (this.historyTimer) clearTimeout(this.historyTimer);
+    this.historyTimer = null;
+    const batch = this.historyBuffer;
+    this.historyBuffer = [];
+    if (!batch.length) return Promise.resolve();
+    return this.onHistory(batch, this.historyOwner).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
   }
 
   private scheduleReconnect(delayMs: number) {
@@ -223,10 +227,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
   }
 
   async stop(): Promise<void> {
-    if (this.historyTimer) clearTimeout(this.historyTimer);
-    const pending = this.historyBuffer;
-    this.historyBuffer = [];
-    if (pending.length) await this.onHistory(pending, this.historyOwner).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
+    await this.flushHistory();
     this.stopping = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.sock?.end(undefined);

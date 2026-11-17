@@ -103,8 +103,8 @@ Eventos, Seguimientos, Configuración, WhatsApp y Auditoría. En celular el men�
 
 ## Aprender del historial al vincular WhatsApp
 
-Al vincular un número, WhatsApp le manda al dispositivo nuevo el historial reciente. El bot no le responde a nadie de
-ese historial: toma los chats de a dos con al menos 4 mensajes de texto en los que respondió la dueña (hasta 200
+Al vincular un número, el bot pide el historial completo (`syncFullHistory`); WhatsApp decide cuánto manda según lo que tenga el celular. El bot no le responde a nadie de
+ese historial: toma los chats de a dos con al menos 4 mensajes de texto en los que respondió la dueña (hasta 5000
 mensajes por chat, sin contactos silenciados), los anonimiza igual que un export y los manda a extraer conocimiento.
 El conocimiento queda pendiente hasta que la dueña lo aprueba. Volver a vincular no duplica mensajes.
 

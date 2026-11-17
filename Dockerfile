@@ -22,4 +22,6 @@ ENV MEDIA_DIR=/data/media
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["sh", "-c", "cd apps/server && node_modules/.bin/prisma migrate deploy && exec node dist/main.js"]
+# Si la plataforma arranca como root (Railway monta los volúmenes como root), se arreglan los permisos de /data
+# y el servidor igual corre como el usuario node.
+CMD ["sh", "-c", "cd apps/server && node_modules/.bin/prisma migrate deploy && node dist/cli.js seed && if [ \"$(id -u)\" = 0 ]; then chown -R node:node /data && exec setpriv --reuid=node --regid=node --init-groups node dist/main.js; else exec node dist/main.js; fi"]

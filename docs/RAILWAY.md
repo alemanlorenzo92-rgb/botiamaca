@@ -31,12 +31,12 @@ Esta guía es para que una persona haga el despliegue. Nada en el repositorio de
 
 ## 3. Primer arranque
 
-1. El contenedor aplica las migraciones al iniciar (`prisma migrate deploy`), incluida `CREATE EXTENSION vector`.
-2. Desde la consola del servicio (Railway → App → Shell):
+1. El contenedor aplica las migraciones (`prisma migrate deploy`, incluida `CREATE EXTENSION vector`) y el seed al iniciar. El seed no pisa una configuración existente.
+2. Crear la administradora desde la consola del servicio (Railway → App → Shell):
    ```bash
-   cd apps/server && node dist/cli.js seed
-   node dist/cli.js user:create --email duena@ejemplo.com --name "Nombre" --role admin
+   cd apps/server && node dist/cli.js user:create --email duena@ejemplo.com --name "Nombre"
    ```
+   Para los volúmenes, la app necesita la variable `RAILWAY_RUN_UID=0`: Railway monta `/data` como root. El contenedor arranca como root solo para corregir los permisos de `/data` y después ejecuta el servidor como el usuario `node`.
 3. Entrar a `PUBLIC_URL`, iniciar sesión, ir a **WhatsApp** y escanear el QR con el teléfono del negocio.
 4. Verificar `GET /health` → `{"ok":true,"whatsapp":"CONNECTED"}`.
 

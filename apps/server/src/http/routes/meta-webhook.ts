@@ -11,6 +11,7 @@ interface MetaMessagingEvent {
   message?: {
     mid?: string;
     is_echo?: boolean;
+    app_id?: number | string;
     text?: string;
     attachments?: { type?: string; payload?: { mime_type?: string } }[];
   };
@@ -95,6 +96,7 @@ async function processPayload(c: Container, body: Buffer) {
       const message = event.message;
       if (!message?.mid) continue;
       const fromMe = message.is_echo === true;
+      if (fromMe && message.app_id !== undefined) continue;
       const id = (fromMe ? event.recipient?.id : event.sender?.id)?.trim();
       if (!id) continue;
       const chatJid = `${prefix}${id}`;

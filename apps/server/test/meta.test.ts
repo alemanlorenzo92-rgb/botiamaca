@@ -114,6 +114,7 @@ describe('webhook de Meta', () => {
 
     const contact = await db.contact.findUniqueOrThrow({ where: { waJid: 'ig:IG_CUSTOMER_1' } });
     expect(contact).toMatchObject({ channel: 'INSTAGRAM', pushName: 'Cliente de Instagram' });
+    expect(contact.phone).toBeNull();
     expect(await db.message.findFirst({ where: { externalId: 'ig-inbound-mid' } })).toMatchObject({
       direction: 'INBOUND',
       author: 'CUSTOMER',
@@ -141,6 +142,21 @@ describe('webhook de Meta', () => {
       timestamp: new Date(),
     });
     expect(duplicate.kind).toBe('duplicate');
+
+    const appEcho = {
+      object: 'instagram',
+      entry: [{
+        messaging: [{
+          sender: { id: 'IG_PAGE_1' },
+          recipient: { id: 'IG_CUSTOMER_1' },
+          timestamp: Date.now(),
+          message: { mid: 'ig-app-echo-mid', is_echo: true, app_id: 12345, text: 'Respuesta de la app' },
+        }],
+      }],
+    };
+    expect((await postMeta(appEcho)).statusCode).toBe(200);
+    expect(await db.conversation.findFirst()).toMatchObject({ status: 'AI_ACTIVE' });
+    expect(await db.message.count()).toBe(2);
 
     const ownerEcho = {
       object: 'instagram',

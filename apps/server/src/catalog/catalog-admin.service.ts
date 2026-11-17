@@ -1,5 +1,5 @@
 import type { EventService, Prisma, PrismaClient } from '@prisma/client';
-import { normalize } from '../core/text.js';
+import { normalize, searchKey } from '../core/text.js';
 import { RETAIL_PRICE_LIST, WHOLESALE_PRICE_LIST } from './catalog.service.js';
 
 export interface Faq {
@@ -44,6 +44,32 @@ export interface TutorialInput {
 }
 
 export class CatalogNotFoundError extends Error {}
+
+const productSearchSelect = {
+  id: true,
+  name: true,
+  brand: true,
+  description: true,
+  features: true,
+  usage: true,
+  recommendations: true,
+  faqs: true,
+  tags: true,
+  searchText: true,
+  categories: { select: { category: { select: { name: true } } } },
+  variants: { where: { deletedAt: null }, select: { values: true } },
+} satisfies Prisma.ProductSelect;
+
+type ProductSearchData = Prisma.ProductGetPayload<{ select: typeof productSearchSelect }>;
+
+function productSearchText(p: ProductSearchData) {
+  const faqs = Array.isArray(p.faqs) ? (p.faqs as unknown as Faq[]).map((f) => `${f.q} ${f.a}`).join(' ') : '';
+  return searchKey(
+    [p.name, p.brand, p.description, p.features, p.usage, p.recommendations, faqs, p.tags.join(' '), p.categories.map((c) => c.category.name).join(' '), p.variants.flatMap((v) => v.values).join(' ')]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
 
 /** Alta, baja y modificación del catálogo propio de Male Style (la fuente de verdad es el panel). */
 export class CatalogAdminService {
@@ -155,15 +181,20 @@ export class CatalogAdminService {
     await this.db.product.update({ where: { id }, data: { deletedAt: new Date(), published: false } });
   }
 
-  private async refreshSearch(id: string) {
-    const p = await this.db.product.findUniqueOrThrow({ where: { id }, include: { categories: { include: { category: true } }, variants: { where: { deletedAt: null }, select: { values: true } } },
+  async refreshProductSearchTexts() {
+    const products = await this.db.product.findMany({ where: { deletedAt: null }, select: productSearchSelect });
+    const updates = products.flatMap((p) => {
+      const searchText = productSearchText(p);
+      return p.searchText === searchText ? [] : [{ id: p.id, searchText }];
     });
-    const faqs = Array.isArray(p.faqs) ? (p.faqs as unknown as Faq[]).map((f) => `${f.q} ${f.a}`).join(' ') : '';
-    const searchText = normalize(
-      [p.name, p.brand, p.description, p.features, p.usage, p.recommendations, faqs, p.tags.join(' '), p.categories.map((c) => c.category.name).join(' '), p.variants.flatMap((v) => v.values).join(' ')]
-        .filter(Boolean)
-        .join(' '),
-    );
+    if (!updates.length) return 0;
+    await this.db.$transaction(updates.map(({ id, searchText }) => this.db.product.update({ where: { id }, data: { searchText } })));
+    return updates.length;
+  }
+
+  private async refreshSearch(id: string) {
+    const p = await this.db.product.findUniqueOrThrow({ where: { id }, select: productSearchSelect });
+    const searchText = productSearchText(p);
     return this.db.product.update({ where: { id }, data: { searchText } });
   }
 

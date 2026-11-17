@@ -59,8 +59,14 @@ que la conversación siga con la IA y que WhatsApp esté conectado, reintenta un
 1. La dueña exporta un chat desde WhatsApp (TXT o ZIP con adjuntos) y lo sube. Baileys no trae el historial
    completo de forma confiable, por eso se usa el export.
 2. Vista previa: elige cuál participante es ella y confirma el permiso. Los nombres pasan a "Dueña"/"Cliente N";
-   teléfonos, emails, CBU/alias y documentos se reemplazan antes de guardar.
+   teléfonos, emails, CBU/alias, documentos, usuarios (@…), direcciones (calle y número, piso/depto, barrio, código
+   postal) y nombres de terceros en contextos típicos ("mi hija Sofía", "de parte de Laura", "Hola Marta") se
+   reemplazan antes de guardar y de mandar nada a OpenAI (`src/knowledge/anonymize.ts`). Es por reglas: un nombre
+   suelto sin contexto puede pasar; por eso además el prompt de extracción descarta datos personales.
 3. Idempotente: el mismo archivo no se importa dos veces y los mensajes repetidos entre exports solapados se saltean.
+   **Exports solapados y borrado:** si se importan dos exports del mismo chat con partes en común, la parte común queda
+   guardada solo en la primera importación. Si después se borra esa primera, la segunda pierde ese tramo. Para
+   corregirlo: borrar las importaciones de ese chat y volver a importar solo el export más completo (el más reciente).
    Los medios del chat entran **desactivados** a la biblioteca hasta que la dueña los revise.
 4. Un trabajo de fondo manda el chat por partes a OpenAI, que propone conocimiento (tono, preguntas frecuentes,
    productos, servicios, políticas, objeciones, proceso de venta), con fragmento de origen, confianza y marca de

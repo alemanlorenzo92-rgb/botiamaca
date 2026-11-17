@@ -269,12 +269,11 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
       'Deriva la conversación a una persona del equipo y frena las respuestas automáticas. Usalo si el cliente lo pide, si falta un dato que no podés inventar y el cliente lo necesita, ante reclamos, o si no podés resolver. El sistema le avisa al cliente; no hace falta que respondas nada más.',
     schema: z.object({ reason: z.string().min(3).max(300).describe('Motivo breve para el equipo') }),
     run: async (a, ctx, d) => {
-      ctx.handedOff = true;
       const current = await d.db.conversation.findUniqueOrThrow({ where: { id: ctx.conversationId } });
       // Si el equipo pausó o tomó la conversación mientras pensaba la IA, no se toca ni se avisa nada.
-      if (current.status !== 'AI_ACTIVE') return { ok: true, note: 'La conversación ya está con el equipo' };
-      await d.handoff.requestHuman(ctx.conversationId, { type: 'AI' }, a.reason);
-      return { ok: true };
+      if (current.status === 'AI_ACTIVE') await d.handoff.requestHuman(ctx.conversationId, { type: 'AI' }, a.reason);
+      ctx.handedOff = true;
+      return current.status === 'AI_ACTIVE' ? { ok: true } : { ok: true, note: 'La conversación ya está con el equipo' };
     },
   }),
 ];

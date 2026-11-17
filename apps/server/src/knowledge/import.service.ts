@@ -98,9 +98,6 @@ export class ChatImportService {
     // El nombre del export suele traer el contacto ("Chat de WhatsApp con Juan…"): no se guarda.
     const first = parsed.messages[0]!.sentAt.toISOString().slice(0, 10);
     const safeName = `Chat del ${first.split('-').reverse().join('/')} (${parsed.messages.length} mensajes)${path.extname(params.fileName).toLowerCase() === '.zip' ? '.zip' : '.txt'}`;
-    // Clave de chat para dedupe: mismos participantes reales = mismo chat (no se guarda, solo va hasheada).
-    const chatKey = [...parsed.participants].sort().join('|');
-
     const aliases = new Map<string, string>();
     let n = 0;
     for (const p of parsed.participants) aliases.set(p, p === owner ? OWNER_ALIAS : `Cliente ${++n}`);
@@ -119,7 +116,7 @@ export class ChatImportService {
     });
 
     try {
-      return await this.store(chat.id, parsed, owner, aliases, chatKey, files, params.mediaConsent);
+      return await this.store(chat.id, parsed, owner, aliases, files, params.mediaConsent);
     } catch (error) {
       // Sin importación a medias: si algo falla se borra todo y el mismo archivo se puede reintentar.
       await this.remove(chat.id).catch((e: unknown) => this.logger.error({ err: e, chatId: chat.id }, 'no se pudo limpiar la importación fallida'));
@@ -132,11 +129,19 @@ export class ChatImportService {
     parsed: ParsedChat,
     owner: string,
     aliases: Map<string, string>,
-    chatKey: string,
     files: Map<string, () => Buffer>,
     mediaConsent: boolean,
   ) {
     const chat = { id: chatId };
+    const sig = (m: ParsedChat['messages'][number]) => `${m.sentAt.toISOString()}|${m.author}|${m.text}|${m.mediaFile ?? ''}`;
+    // Contexto de cada mensaje: el último mensaje anterior de otra persona.
+    let lastByOther = '';
+    let prev: ParsedChat['messages'][number] | undefined;
+    const context = parsed.messages.map((m) => {
+      if (prev && prev.author !== m.author) lastByOther = sig(prev);
+      prev = m;
+      return lastByOther;
+    });
     const rows = parsed.messages.map((m, position) => ({
       chatId: chat.id,
       position,
@@ -145,8 +150,9 @@ export class ChatImportService {
       fromOwner: m.author === owner,
       text: anonymize(m.text, aliases),
       mediaFile: m.mediaFile,
-      // Incluye el nombre real (hasheado, no se guarda) para detectar el mismo mensaje en exports solapados.
-      dedupeKey: sha256(`${chatKey}|${m.sentAt.toISOString()}|${m.author}|${m.text}|${m.mediaFile ?? ''}`),
+      // Mensaje + último mensaje de la otra parte, con nombres reales (hasheados, no se guardan): el mismo mensaje en
+      // exports solapados da la misma clave; una respuesta igual a la misma hora en otro chat no choca (otro cliente).
+      dedupeKey: sha256(`${context[position]}#${sig(m)}`),
     }));
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 1000) {

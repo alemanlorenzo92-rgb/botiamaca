@@ -52,7 +52,11 @@ describe('importación de chats', () => {
     expect(await importText(c, CHAT_A)).toMatchObject({ duplicate: true, inserted: 0 });
     expect(await importText(c, CHAT_A_MORE)).toMatchObject({ duplicate: false, inserted: 2, skipped: 4 });
     expect(await db.importedMessage.count()).toBe(6);
-    expect(await db.job.count({ where: { type: 'knowledge.extract' } })).toBe(2);
+    // Un participante nuevo en un export posterior no cambia las claves de lo ya importado.
+    const third = `${CHAT_A_MORE}\n12/11/2026, 08:00 - Correo Andreani: Su envío está en camino`;
+    expect(await importText(c, third)).toMatchObject({ duplicate: false, inserted: 1, skipped: 6 });
+    expect(await db.importedMessage.count()).toBe(7);
+    expect(await db.job.count({ where: { type: 'knowledge.extract' } })).toBe(3);
   });
 
   it('mismo texto a la misma hora en chats distintos no se pierde; el nombre del export no se guarda', async () => {

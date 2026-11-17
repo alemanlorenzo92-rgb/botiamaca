@@ -38,8 +38,11 @@ export class JobRunner {
 
   /** Procesa trabajos hasta vaciar la cola, varios a la vez. Devuelve cuántos procesó. */
   async runOnce(concurrency = CONCURRENCY): Promise<number> {
-    const counts = await Promise.all(Array.from({ length: concurrency }, () => this.drain()));
-    return counts.reduce((a, b) => a + b, 0);
+    // allSettled: si un drenador falla, se espera a los demás antes de liberar la cola (y el apagado los espera).
+    const results = await Promise.allSettled(Array.from({ length: concurrency }, () => this.drain()));
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed) throw failed.reason;
+    return results.reduce((a, r) => a + (r.status === 'fulfilled' ? r.value : 0), 0);
   }
 
   private async drain(): Promise<number> {

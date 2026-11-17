@@ -212,8 +212,17 @@ export class KnowledgeService {
       ORDER BY c.embedding <=> ${v}::vector LIMIT ${limit}`;
   }
 
+  /** Los guardados van de a uno: buscar vecinos y crear tiene que ser atómico aunque se extraigan varios chats a la vez. */
+  private saving: Promise<unknown> = Promise.resolve();
+
   /** Agrega un conocimiento: suma fuente si ya existe, marca conflicto si contradice uno existente. */
-  async addItem(item: ExtractedItem, chatId: string | null): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
+  addItem(item: ExtractedItem, chatId: string | null): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
+    const run = this.saving.then(() => this.addItemNow(item, chatId));
+    this.saving = run.catch(() => {});
+    return run;
+  }
+
+  private async addItemNow(item: ExtractedItem, chatId: string | null): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
     const content = anonymize(item.content);
     const excerpt = anonymize(item.excerpt).slice(0, 1000);
     const [vector] = await this.embedder.embed([`${item.title}\n${content}`]);

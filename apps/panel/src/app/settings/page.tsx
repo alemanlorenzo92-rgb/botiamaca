@@ -216,13 +216,13 @@ interface User {
 function Users() {
   const { user: me } = useSession();
   const { data, reload } = useData<{ users: User[] }>('/users');
-  const [form, setForm] = useState({ email: '', name: '', password: '', roleCode: 'agent' });
+  const [form, setForm] = useState({ email: '', name: '', password: '', roleCode: 'admin' });
   const [msg, setMsg] = useState<string | null>(null);
   const create = async () => {
     setMsg(null);
     try {
       await api('/users', { body: form });
-      setForm({ email: '', name: '', password: '', roleCode: 'agent' });
+      setForm({ email: '', name: '', password: '', roleCode: 'admin' });
       setMsg('Usuario creado');
       await reload();
     } catch (e) {
@@ -274,10 +274,6 @@ function Users() {
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
         />
-        <select value={form.roleCode} onChange={(e) => setForm({ ...form, roleCode: e.target.value })}>
-          <option value="agent">Vendedor/a</option>
-          <option value="admin">Administrador</option>
-        </select>
         <div className="row">
           <button className="primary" disabled={!form.email || !form.name || form.password.length < 10} onClick={create}>
             Crear

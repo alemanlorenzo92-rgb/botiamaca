@@ -155,6 +155,17 @@ describe('atención humana', () => {
     expect((await db.message.findMany({ where: { author: 'AI' } })).length).toBe(0);
   });
 
+  it('la dueña toma la conversación mientras la IA arma la respuesta: el texto de la IA no sale', async () => {
+    const { c, transport } = createTestContainer();
+    const r = await c.conversations.ingest(inbound('Hola, precio del glitter?'));
+    const id = (await conversation()).id;
+    await c.handoff.takeFromPhone(id);
+    const msg = await c.sender.sendText({ conversationId: id, text: 'Respuesta tardía de la IA', author: 'AI' });
+    expect(r.kind).toBe('customer');
+    expect(msg.status).toBe('DISCARDED');
+    expect(transport.sent).toHaveLength(0);
+  });
+
   it('interruptor general apagado: el backend bloquea la respuesta', async () => {
     const { c, llm } = createTestContainer();
     await db.aiSetting.update({ where: { id: 1 }, data: { enabled: false } });

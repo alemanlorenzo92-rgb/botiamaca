@@ -43,6 +43,8 @@ export class HandoffService {
     extra: { assignedUserId?: string | null; humanRequestedAt?: Date | null } = {},
   ) {
     const updated = await this.db.$transaction(async (tx) => {
+      // Misma fila que bloquea MessageSender: la toma espera a que termine un envío de la IA ya decidido.
+      await tx.$queryRaw`SELECT 1 FROM conversations WHERE id = ${conversationId}::uuid FOR UPDATE`;
       const current = await tx.conversation.findUniqueOrThrow({ where: { id: conversationId } });
       if (current.status !== to && !TRANSITIONS[current.status].includes(to)) {
         throw new InvalidTransitionError(current.status, to);

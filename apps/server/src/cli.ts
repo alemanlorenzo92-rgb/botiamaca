@@ -50,7 +50,7 @@ function askHidden(question: string): Promise<string> {
 
 const USAGE = `Uso:
   pnpm cli seed
-  pnpm cli user:create --email <email> --name <nombre> [--role admin|agent]
+  pnpm cli user:create --email <email> --name <nombre> [--role admin]
     (la contraseña se pide por teclado o se toma de CLI_PASSWORD)`;
 
 async function main() {

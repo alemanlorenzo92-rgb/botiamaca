@@ -39,7 +39,7 @@ pnpm dev                        # API en :3000 y panel en :3001 (http://localhos
   (la búsqueda de conocimiento usa un embedder local de palabras, de menor calidad).
 - Si venías de la imagen `postgres:18`, el volumen sirve igual; si Prisma se queja de "collation version", correr
   `ALTER DATABASE <base> REFRESH COLLATION VERSION;` en `template1`, `postgres`, `bot` y `bot_test`.
-- Tests: `pnpm test` (necesita el Postgres de `pnpm db:up`; usa la base `bot_test`, o `TEST_DATABASE_URL`).
+- Tests: `pnpm test` (45 tests; necesita el Postgres de `pnpm db:up`; usa la base `bot_test`, o `TEST_DATABASE_URL`).
 - Producción con Docker: `docker compose --profile prod up -d --build` (aplica migraciones al arrancar).
 
 ## Cómo funciona
@@ -84,30 +84,41 @@ atiende ella, el backend no deja salir respuestas automáticas (ni fotos).
 **Panel**: Inicio (pendientes y alertas), Bandeja, Contactos, Catálogo, Fotos y videos, Conocimiento, Pedidos,
 Eventos, Seguimientos, Configuración, WhatsApp y Auditoría. En celular el menú se abre con ☰.
 
-## Hecho
+## Integrado en `main`
 
-- Bandeja, derivación, guardia de respuestas, seguimientos, pedidos a revisar, leads de eventos, auditoría, SSE.
-- Catálogo propio, servicios, biblioteca multimedia, tutoriales y envío de medios por WhatsApp.
-- Importación de chats, extracción de conocimiento, duplicados, conflictos, revisión y RAG con pgvector.
-- Tests (`apps/server/test`): escenarios de venta, casos de borde, API del panel, biblioteca, envío de medios
-  (reintento, archivo faltante, tipo incorrecto, conversación tomada, WhatsApp caído, límite), catálogo sin precio/stock,
-  parser Android/iOS, anonimización, importación TXT/ZIP, exports solapados, extracción, conflictos, aprobación,
-  trazabilidad y error de OpenAI.
+- PR #1 (bot vendedor, IA con herramientas, servidor, panel, tests, Docker) y PR #2 (catálogo propio, biblioteca
+  multimedia, aprendizaje de chats con RAG) están mergeados.
+- Después: toma de la dueña y envío de la IA bloquean la misma fila (`SELECT … FOR UPDATE`), así que no pueden responder
+  las dos a la vez; se quitó el rol de vendedor (una sola administradora); 2 reintentos ante errores de OpenAI;
+  `pnpm --filter @bot/server smoke:openai` (prueba real de punta a punta); `scripts/backup.sh`.
 
-## Límites conocidos (no verificados con servicios reales)
+## Funciona (verificado con tests contra Postgres real, OpenAI y WhatsApp simulados)
 
-- No se probó con OpenAI real (las pruebas usan un modelo simulado) ni con un WhatsApp real vinculado:
-  el envío de fotos/videos por Baileys está implementado pero no se verificó contra WhatsApp.
-- El parser cubre los formatos de export de Android e iOS en español e inglés con fecha día/mes; otros formatos
-  regionales pueden necesitar ajustes.
+- Bandeja, derivación, guardia de respuestas (interruptor general, estado, límite por hora, presupuesto de tokens),
+  seguimientos, pedidos a revisar, leads de eventos, auditoría y trazabilidad de la IA (`ai_runs`), SSE.
+- Catálogo propio, servicios, biblioteca multimedia, tutoriales y envío de medios.
+- Importación de chats, anonimización, deduplicación, extracción, duplicados, contradicciones, revisión y RAG.
+- Mensajes entrantes repetidos se descartan por `externalId`; reconexión de WhatsApp con espera creciente; respuestas
+  pendientes se retoman al reconectar.
+
+## Falta probar (necesita credenciales)
+
+- **OpenAI real:** correr `smoke:openai` con una API key (ver `docs/GUIA_PUESTA_EN_MARCHA.md`). Se verificó que el
+  script llega a la API real (con una key inválida OpenAI responde 401), pero sin key válida no hay resultado aprobado.
+- **WhatsApp real:** vincular un número de prueba y verificar recepción, respuestas, fotos y videos.
+
+## Límites conocidos
+
+- El parser cubre exports de Android e iOS en español e inglés con fecha día/mes.
 - Audios entrantes: no se transcriben (la IA ve "[Envió un audio]").
-- El rol "Vendedor/a" sigue existiendo en el código (permisos), pero no se usa: la operación es solo de la dueña.
+- Baileys no es oficial: ver riesgos en `docs/GUIA_PUESTA_EN_MARCHA.md`.
 
-## Pendiente
+## Próximos pasos (externos)
 
-1. Cargar `OPENAI_API_KEY` y probar con un número de WhatsApp de prueba.
-2. Cargar catálogo, servicios y datos del negocio desde el panel; importar chats reales y revisar lo aprendido.
-3. Desplegar siguiendo `docs/RAILWAY.md` (con volumen persistente para `MEDIA_DIR`).
+1. Cargar `OPENAI_API_KEY` y correr `smoke:openai`.
+2. Vincular un número de WhatsApp de prueba y después el real.
+3. Cargar catálogo, servicios y datos del negocio; importar chats reales y aprobar el conocimiento.
+4. Desplegar siguiendo `docs/RAILWAY.md` (con volumen para `MEDIA_DIR`) y programar `scripts/backup.sh`.
 
 ## Credenciales que van a hacer falta (no commitear)
 

@@ -12,7 +12,6 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   await c.auth.createUser({ email: 'admin@test.local', name: 'Admin', password: 'clave-admin-123', roleCode: 'admin' });
-  await c.auth.createUser({ email: 'vende@test.local', name: 'Vende', password: 'clave-vende-123', roleCode: 'agent' });
 });
 afterAll(async () => {
   await app.close();
@@ -37,11 +36,11 @@ describe('API del panel', () => {
     expect((await app.inject({ url: '/api/auth/me', headers: { cookie } })).statusCode).toBe(401);
   });
 
-  it('roles: el vendedor no puede tocar la configuración', async () => {
-    const { cookie } = await login('vende@test.local', 'clave-vende-123');
-    expect((await app.inject({ url: '/api/conversations', headers: { cookie } })).statusCode).toBe(200);
-    expect((await app.inject({ url: '/api/settings/ai', headers: { cookie } })).statusCode).toBe(403);
-    expect((await app.inject({ url: '/api/users', headers: { cookie } })).statusCode).toBe(403);
+  it('una sola administradora: no hay rol de vendedor y sin sesión todo devuelve 401', async () => {
+    await expect(c.auth.createUser({ email: 'vende@test.local', name: 'Vende', password: 'clave-vende-123', roleCode: 'agent' })).rejects.toThrow('rol');
+    for (const url of ['/api/conversations', '/api/settings/ai', '/api/users', '/api/dashboard']) {
+      expect((await app.inject({ url })).statusCode).toBe(401);
+    }
   });
 
   it('interruptor de IA y datos del negocio', async () => {

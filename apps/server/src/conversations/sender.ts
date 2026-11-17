@@ -1,4 +1,4 @@
-import type { MessageAuthor, PrismaClient } from '@prisma/client';
+import type { Message, MessageAuthor, Prisma, PrismaClient } from '@prisma/client';
 import type { EventBus } from '../core/events.js';
 import type { MediaService } from '../media/media.service.js';
 import { WhatsAppNotConnectedError, type WhatsAppTransport } from '../whatsapp/transport.js';
@@ -11,6 +11,22 @@ export class MessageSender {
     private readonly media: MediaService,
   ) {}
 
+  /**
+   * Crea el mensaje saliente. Si es de la IA, bloquea la fila de la conversación y verifica que siga en AI_ACTIVE:
+   * la toma de la dueña actualiza esa misma fila, así que una vez tomada ningún mensaje nuevo de la IA puede salir.
+   */
+  private async createOutbound(data: Prisma.MessageUncheckedCreateInput): Promise<Message> {
+    return this.db.$transaction(async (tx) => {
+      if (data.author === 'AI') {
+        const [row] = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM conversations WHERE id = ${data.conversationId}::uuid FOR UPDATE`;
+        if (row?.status !== 'AI_ACTIVE') {
+          return tx.message.create({ data: { ...data, status: 'DISCARDED', error: `Conversación en estado ${row?.status ?? 'inexistente'}` } });
+        }
+      }
+      return tx.message.create({ data });
+    });
+  }
+
   /** Envía un texto y lo registra. Devuelve el mensaje guardado (SENT o FAILED). */
   async sendText(params: {
     conversationId: string;
@@ -22,17 +38,16 @@ export class MessageSender {
       where: { id: params.conversationId },
       include: { contact: true },
     });
-    const message = await this.db.message.create({
-      data: {
-        conversationId: conversation.id,
-        direction: 'OUTBOUND',
-        author: params.author,
-        type: 'TEXT',
-        text: params.text,
-        status: 'PENDING',
-        sentByUserId: params.userId ?? null,
-      },
+    const message = await this.createOutbound({
+      conversationId: conversation.id,
+      direction: 'OUTBOUND',
+      author: params.author,
+      type: 'TEXT',
+      text: params.text,
+      status: 'PENDING',
+      sentByUserId: params.userId ?? null,
     });
+    if (message.status === 'DISCARDED') return message;
     try {
       const { externalId } = await this.transport.sendText(conversation.contact.waJid, params.text);
       const saved = await this.db.message.update({
@@ -78,19 +93,18 @@ export class MessageSender {
     } catch (error) {
       loadError = error instanceof Error ? error.message : String(error);
     }
-    const message = await this.db.message.create({
-      data: {
-        conversationId: conversation.id,
-        direction: 'OUTBOUND',
-        author: params.author,
-        type: loaded?.asset.kind ?? 'IMAGE',
-        text: params.caption ?? null,
-        mediaMime: loaded?.asset.mime ?? null,
-        mediaId: loaded ? params.mediaId : null,
-        status: 'PENDING',
-        sentByUserId: params.userId ?? null,
-      },
+    const message = await this.createOutbound({
+      conversationId: conversation.id,
+      direction: 'OUTBOUND',
+      author: params.author,
+      type: loaded?.asset.kind ?? 'IMAGE',
+      text: params.caption ?? null,
+      mediaMime: loaded?.asset.mime ?? null,
+      mediaId: loaded ? params.mediaId : null,
+      status: 'PENDING',
+      sentByUserId: params.userId ?? null,
     });
+    if (message.status === 'DISCARDED') return message;
     const fail = async (error: string) => {
       const saved = await this.db.message.update({ where: { id: message.id }, data: { status: 'FAILED', error } });
       this.bus.publish({ type: 'message.created', conversationId: conversation.id, messageId: saved.id });
@@ -100,6 +114,10 @@ export class MessageSender {
     const payload = { kind: loaded.asset.kind, data: loaded.data, mimetype: loaded.asset.mime, caption: params.caption ?? null };
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0 && params.author === 'AI') {
+        const current = await this.db.conversation.findUniqueOrThrow({ where: { id: conversation.id }, select: { status: true } });
+        if (current.status !== 'AI_ACTIVE') return fail(`No se reintenta: conversación en estado ${current.status}`);
+      }
       try {
         const { externalId } = await this.transport.sendMedia(conversation.contact.waJid, payload);
         const saved = await this.db.message.update({ where: { id: message.id }, data: { status: 'SENT', externalId } });

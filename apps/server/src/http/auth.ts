@@ -24,7 +24,6 @@ export type Permission = (typeof PERMISSIONS)[number];
 
 export const DEFAULT_ROLES: { code: string; name: string; permissions: string[] }[] = [
   { code: 'admin', name: 'Administrador', permissions: ['*'] },
-  { code: 'agent', name: 'Vendedor/a', permissions: ['inbox', 'contacts', 'catalog', 'orders', 'leads', 'followups'] },
 ];
 
 export type AuthUser = User & { role: Role };

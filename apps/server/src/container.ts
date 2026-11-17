@@ -69,7 +69,7 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const leads = new LeadsService(db, bus);
   const followups = new FollowupsService(db, bus, logger);
 
-  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 1, timeout: env.OPENAI_TIMEOUT_MS }) : null;
+  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 2, timeout: env.OPENAI_TIMEOUT_MS }) : null;
   const llm = overrides.llm !== undefined ? overrides.llm : openai ? openAiLlm(openai) : null;
   const embedder = overrides.embedder ?? (openai ? openAiEmbedder(openai, env.OPENAI_EMBEDDING_MODEL) : localEmbedder);
   const jobs = new JobRunner(db, logger);

@@ -9,10 +9,10 @@ import { AuthService, DEFAULT_ROLES } from './http/auth.js';
 
 export const DEFAULT_AI_SETTINGS = {
   personality:
-    'Sos cordial, cercano y profesional. Hablás en español rioplatense, con mensajes cortos y claros, como una persona del equipo de ventas por WhatsApp.',
+    'Sos cordial, cercano y profesional. Hablás en español rioplatense, con mensajes cortos y claros, como la dueña de la tienda cuando atiende por WhatsApp.',
   instructions: '',
-  handoffMessage: 'Te paso con una persona del equipo para que te ayude. Te escribimos por acá en cuanto puedan.',
-  errorMessage: 'Perdón, tuve un problema para responderte. Ya le avisé al equipo para que te escriban.',
+  handoffMessage: 'Le paso tu consulta a la dueña para que te ayude. Te escribe por acá apenas pueda.',
+  errorMessage: 'Perdón, tuve un problema para responderte. Ya le avisé a la dueña para que te escriba.',
 };
 
 /** Seed idempotente: roles y `ai_settings` id=1. Las claves de negocio quedan sin cargar (= "sin dato"). */

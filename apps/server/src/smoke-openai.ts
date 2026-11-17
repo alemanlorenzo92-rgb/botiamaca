@@ -64,8 +64,9 @@ try {
   check('4-5. aprobar y guardar', docs.length > 0 && (await db.knowledgeDocument.count({ where: { status: 'APPROVED' } })) === docs.length);
   const found = await c.knowledge.retrieve('cuántas unidades necesito para comprar al por mayor');
   check('6-7. recuperar el conocimiento correcto (pgvector + embeddings reales)', found.documents.some((d) => /10|diez/.test(d.content)), found.documents.map((d) => d.title).join(' | '));
+  await c.settings.setBusiness('wholesale_conditions', { minimo: '10 unidades surtidas, se pueden combinar colores' }, null);
   const answer = await ask('Hola! cuál es el mínimo para comprar mayorista?');
-  check('8. respuesta contextual de OpenAI', /10|diez/i.test(answer), answer);
+  check('8. respuesta contextual de OpenAI (dato cargado en el panel)', /10|diez/i.test(answer) && !/equipo|asesor/i.test(answer), answer);
   await c.catalogAdmin.createProduct({ name: 'Glitter holográfico plateado' });
   const price = await ask('Cuánto sale el glitter holográfico plateado?');
   const run = await db.aiRun.findFirst({ orderBy: { createdAt: 'desc' } });

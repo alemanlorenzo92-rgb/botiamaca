@@ -35,7 +35,7 @@ export class FollowupsService {
     });
   }
 
-  /** Los seguimientos vencidos se avisan al equipo en el panel; no se escribe solo al cliente. */
+  /** Los seguimientos vencidos se avisan a la dueña en el panel; no se escribe solo al cliente. */
   async notifyDue(): Promise<number> {
     const due = await this.db.followup.findMany({
       where: { status: 'PENDING', dueAt: { lte: new Date() }, notifiedAt: null },

@@ -75,7 +75,7 @@ export function historyToInput(messages: Message[]): ResponseInputItem[] {
     const body = [media ? `[Envió ${media}]` : null, m.text?.trim() || null].filter(Boolean).join(' ');
     if (!body) continue;
     if (m.author === 'CUSTOMER') items.push({ role: 'user', content: body });
-    else if (m.author === 'HUMAN') items.push({ role: 'assistant', content: `[Respondió una persona del equipo] ${body}` });
+    else if (m.author === 'HUMAN') items.push({ role: 'assistant', content: `[Respondió la dueña] ${body}` });
     else items.push({ role: 'assistant', content: body });
   }
   return items;

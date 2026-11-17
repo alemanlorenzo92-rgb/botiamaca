@@ -110,6 +110,16 @@ function ChatView({ id }: { id: string }) {
     }
   };
 
+  const setBotMuted = async (botMuted: boolean) => {
+    setError(null);
+    try {
+      await api(`/contacts/${conversation!.contact.id}`, { method: 'PATCH', body: { botMuted } });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const send = async () => {
     if (!text.trim()) return;
     setBusy(true);
@@ -153,7 +163,11 @@ function ChatView({ id }: { id: string }) {
           )}
           {s !== 'AI_PAUSED' && s !== 'RESOLVED' && <button onClick={() => action('pause')}>Pausar IA</button>}
           {s !== 'RESOLVED' && <button onClick={() => action('resolve')}>Resolver</button>}
+          <button onClick={() => setBotMuted(!conversation.contact.botMuted)}>
+            {conversation.contact.botMuted ? 'Dejar que el bot le responda' : 'Que el bot no le responda nunca'}
+          </button>
         </div>
+        {conversation.contact.botMuted && <div className="small muted">El bot nunca le responde a este contacto: lo atendés siempre vos.</div>}
       </div>
       <div className="messages">
         {messages.map((m) => (

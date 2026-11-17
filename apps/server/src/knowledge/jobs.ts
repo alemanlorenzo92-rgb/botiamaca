@@ -3,6 +3,8 @@ import type { Logger } from '../core/logger.js';
 
 export type JobHandler = (payload: Prisma.JsonValue, job: Job) => Promise<void>;
 
+/** Trabajos en paralelo: con historiales de cientos de chats, de a uno tarda horas. */
+const CONCURRENCY = 4;
 const MAX_ATTEMPTS = 3;
 
 /** Cola durable mínima sobre Postgres (FOR UPDATE SKIP LOCKED). Sobrevive reinicios. */
@@ -34,8 +36,16 @@ export class JobRunner {
     return rows[0] ? this.db.job.findUnique({ where: { id: rows[0].id } }) : null;
   }
 
-  /** Procesa trabajos hasta vaciar la cola. Devuelve cuántos procesó. */
-  async runOnce(): Promise<number> {
+  /** Procesa trabajos hasta vaciar la cola, varios a la vez. Devuelve cuántos procesó. */
+  async runOnce(concurrency = CONCURRENCY): Promise<number> {
+    // allSettled: si un drenador falla, se espera a los demás antes de liberar la cola (y el apagado los espera).
+    const results = await Promise.allSettled(Array.from({ length: concurrency }, () => this.drain()));
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed) throw failed.reason;
+    return results.reduce((a, r) => a + (r.status === 'fulfilled' ? r.value : 0), 0);
+  }
+
+  private async drain(): Promise<number> {
     let count = 0;
     for (let job = await this.claim(); job; job = await this.claim()) {
       count++;

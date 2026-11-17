@@ -115,7 +115,16 @@ export class KnowledgeService {
   private async ask<T>(instructions: string, input: string, name: string, schema: Record<string, unknown>, parser: z.ZodType<T>): Promise<T> {
     if (!this.llm) throw new Error('Falta OPENAI_API_KEY: no se puede extraer conocimiento');
     const res = await this.llm.create(
-      { model: this.cfg.model, instructions, input, text: jsonSchema(name, schema), max_output_tokens: 4000, store: false },
+      {
+        model: this.cfg.model,
+        instructions,
+        input,
+        text: jsonSchema(name, schema),
+        max_output_tokens: 4000,
+        store: false,
+        // Sin esto gpt-5 razona en "medium" y cada tramo tarda tanto que se corta por tiempo.
+        ...(/^(gpt-5|o\d)/.test(this.cfg.model) ? { reasoning: { effort: 'low' as const } } : {}),
+      },
       { signal: AbortSignal.timeout(this.cfg.timeoutMs ?? 120_000) },
     );
     return parser.parse(JSON.parse(outputText(res)));
@@ -203,12 +212,22 @@ export class KnowledgeService {
       ORDER BY c.embedding <=> ${v}::vector LIMIT ${limit}`;
   }
 
+  /** Los guardados van de a uno: buscar vecinos y crear tiene que ser atómico aunque se extraigan varios chats a la vez. */
+  private saving: Promise<unknown> = Promise.resolve();
+
   /** Agrega un conocimiento: suma fuente si ya existe, marca conflicto si contradice uno existente. */
   async addItem(item: ExtractedItem, chatId: string | null): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
     const content = anonymize(item.content);
     const excerpt = anonymize(item.excerpt).slice(0, 1000);
+    // El embedding va fuera del turno: solo buscar vecinos y guardar se hace de a uno.
     const [vector] = await this.embedder.embed([`${item.title}\n${content}`]);
-    const near = await this.neighbors(vector!);
+    const run = this.saving.then(() => this.addItemNow(item, chatId, content, excerpt, vector!));
+    this.saving = run.catch(() => {});
+    return run;
+  }
+
+  private async addItemNow(item: ExtractedItem, chatId: string | null, content: string, excerpt: string, vector: number[]): Promise<'created' | 'duplicate' | 'conflict' | 'rejected'> {
+    const near = await this.neighbors(vector);
     const top = near[0];
     let conflict: { id: string; note: string } | null = null;
     // Muy parecido pero con otro texto (p. ej. otro valor): primero se pregunta si contradice.

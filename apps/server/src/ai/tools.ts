@@ -363,6 +363,7 @@ async function sendMediaTool(kind: 'IMAGE' | 'VIDEO', mediaId: string, caption: 
     ctx.handedOff = true;
     return { sent: false, note: 'La conversación ya está con la dueña' };
   }
+  if (!(await d.settings.getAi()).enabled) return { sent: false, note: 'La IA está apagada: no envíes archivos' };
   if (!d.sender.isReady()) throw new ToolInputError('WhatsApp no está conectado: no se puede enviar el archivo ahora');
   const msg = await d.sender.sendMedia({ conversationId: ctx.conversationId, mediaId, caption, author: 'AI', requireActive: true });
   if (msg.status !== 'SENT') throw new ToolInputError(`No se pudo enviar el archivo (${msg.error ?? 'error'}). Avisale al cliente sin inventar el contenido.`);

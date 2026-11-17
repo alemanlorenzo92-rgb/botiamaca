@@ -134,14 +134,9 @@ export class ChatImportService {
   ) {
     const chat = { id: chatId };
     const sig = (m: ParsedChat['messages'][number]) => `${m.sentAt.toISOString()}|${m.author}|${m.text}|${m.mediaFile ?? ''}`;
-    // Contexto de cada mensaje: el último mensaje anterior de otra persona.
-    let lastByOther = '';
-    let prev: ParsedChat['messages'][number] | undefined;
-    const context = parsed.messages.map((m) => {
-      if (prev && prev.author !== m.author) lastByOther = sig(prev);
-      prev = m;
-      return lastByOther;
-    });
+    // El chat se identifica por la clienta (primer participante que no es la dueña), no por el contenido del export:
+    // así exports solapados del mismo chat dan las mismas claves aunque uno tenga más historia o más participantes.
+    const customer = parsed.messages.find((m) => m.author !== owner)?.author ?? '';
     const rows = parsed.messages.map((m, position) => ({
       chatId: chat.id,
       position,
@@ -150,9 +145,8 @@ export class ChatImportService {
       fromOwner: m.author === owner,
       text: anonymize(m.text, aliases),
       mediaFile: m.mediaFile,
-      // Mensaje + último mensaje de la otra parte, con nombres reales (hasheados, no se guardan): el mismo mensaje en
-      // exports solapados da la misma clave; una respuesta igual a la misma hora en otro chat no choca (otro cliente).
-      dedupeKey: sha256(`${context[position]}#${sig(m)}`),
+      // Nombres reales hasheados (no se guardan): una respuesta igual a la misma hora en otro chat no choca.
+      dedupeKey: sha256(`${customer}#${sig(m)}`),
     }));
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 1000) {

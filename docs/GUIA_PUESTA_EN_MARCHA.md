@@ -16,6 +16,7 @@ persona (ver `docs/RAILWAY.md`).
 | `WHATSAPP_ENABLED` | no | `true` en producción; `false` para probar sin WhatsApp |
 | `WHATSAPP_CONTACT_LINK` | no | Link de WhatsApp para ofrecer desde Instagram y Facebook; si se omite, se arma con el número conectado |
 | `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ACCESS_TOKEN` | no | Configurar las tres para habilitar Instagram Direct y Messenger |
+| `META_APP_ID` | no | ID de la app de Meta; solo se ignoran los ecos enviados por esta app |
 | `PUBLIC_URL`, `PORT`, `TRUST_PROXY` | no | URL pública; `TRUST_PROXY=true` solo detrás de un proxy |
 | `MEDIA_DIR` | no | Carpeta persistente de fotos y videos (`/data/media` en Docker) |
 | `MEDIA_MAX_IMAGE_MB` / `MEDIA_MAX_VIDEO_MB` / `IMPORT_MAX_MB` | no | `10` / `16` / `200` |

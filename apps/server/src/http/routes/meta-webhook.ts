@@ -96,7 +96,7 @@ async function processPayload(c: Container, body: Buffer) {
       const message = event.message;
       if (!message?.mid) continue;
       const fromMe = message.is_echo === true;
-      if (fromMe && message.app_id !== undefined) continue;
+      if (fromMe && String(message.app_id) === c.env.META_APP_ID) continue;
       const id = (fromMe ? event.recipient?.id : event.sender?.id)?.trim();
       if (!id) continue;
       const chatJid = `${prefix}${id}`;

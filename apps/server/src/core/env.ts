@@ -25,6 +25,7 @@ const schema = z.object({
   META_APP_SECRET: z.string().optional(),
   META_VERIFY_TOKEN: z.string().optional(),
   META_PAGE_ACCESS_TOKEN: z.string().optional(),
+  META_APP_ID: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-5-mini'),
   OPENAI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(800),

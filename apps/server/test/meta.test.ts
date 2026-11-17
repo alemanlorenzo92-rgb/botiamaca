@@ -22,6 +22,7 @@ beforeEach(async () => {
     META_APP_SECRET: APP_SECRET,
     META_VERIFY_TOKEN: VERIFY_TOKEN,
     META_PAGE_ACCESS_TOKEN: PAGE_TOKEN,
+    META_APP_ID: '12345',
     WHATSAPP_CONTACT_LINK: WHATSAPP_LINK,
   });
   c = testContainer.c;
@@ -166,7 +167,7 @@ describe('webhook de Meta', () => {
           sender: { id: 'IG_PAGE_1' },
           recipient: { id: 'IG_CUSTOMER_1' },
           timestamp: Date.now(),
-          message: { mid: 'ig-owner-mid', is_echo: true, text: 'Te respondo yo' },
+          message: { mid: 'ig-owner-mid', is_echo: true, app_id: 263902037430900, text: 'Te respondo yo' },
         }],
       }],
     };

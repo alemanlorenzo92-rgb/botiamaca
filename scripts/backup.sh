@@ -9,5 +9,6 @@ DEST="${1:-./backups}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$DEST"
 pg_dump --format=custom --no-owner --dbname="$DATABASE_URL" --file="$DEST/db-$STAMP.dump"
-if [ -d "$MEDIA_DIR" ]; then tar -czf "$DEST/media-$STAMP.tar.gz" -C "$MEDIA_DIR" .; fi
+[ -d "$MEDIA_DIR" ] || { echo "No existe MEDIA_DIR=$MEDIA_DIR: revisá la variable (el backup quedaría sin fotos ni videos)" >&2; exit 1; }
+tar -czf "$DEST/media-$STAMP.tar.gz" -C "$MEDIA_DIR" .
 echo "Backup listo en $DEST ($STAMP)"

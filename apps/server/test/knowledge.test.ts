@@ -217,5 +217,18 @@ describe('historial de WhatsApp al vincular', () => {
     expect(await db.job.count({ where: { type: 'knowledge.extract' } })).toBe(1);
     expect(transport.sent).toHaveLength(0);
     expect(await c.chatImport.importHistory(history, 'Male Style')).toEqual({ imported: 0 });
+    // El mismo chat informado como LID con el número como alternativo no se duplica.
+    const asLid = history.filter((m) => m.chatJid === venta).map((m) => ({ ...m, chatJid: '123456@lid', altJid: venta }));
+    expect(await c.chatImport.importHistory(asLid, 'Male Style')).toEqual({ imported: 0 });
+  });
+
+  it('no aprende de contactos silenciados aunque lleguen con otro id ni de chats donde la dueña no aparece en lo reciente', async () => {
+    const { c } = createTestContainer();
+    const venta = '5493511111111@s.whatsapp.net';
+    await db.contact.create({ data: { waJid: '999@lid', waAltJid: venta, botMuted: true } });
+    const chat = [0, 1, 2, 3].map((i) => msg(venta, i % 2 === 1, `Mensaje ${i}`, i));
+    expect(await c.chatImport.importHistory(chat)).toEqual({ imported: 0 });
+    const viejo = [msg('5493513333333@s.whatsapp.net', true, 'Hola!', 0), ...Array.from({ length: 200 }, (_, i) => msg('5493513333333@s.whatsapp.net', false, `Promo ${i}`, i + 1))];
+    expect(await c.chatImport.importHistory(viejo)).toEqual({ imported: 0 });
   });
 });

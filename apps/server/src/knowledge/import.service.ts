@@ -136,16 +136,19 @@ export class ChatImportService {
     const byChat = new Map<string, InboundWhatsAppMessage[]>();
     for (const m of messages) {
       if (m.type !== 'TEXT' || !m.text?.trim()) continue;
-      const list = byChat.get(m.chatJid) ?? [];
+      // El mismo chat puede llegar como número o como LID: se agrupa por el número cuando WhatsApp lo informa.
+      const key = m.chatJid.endsWith('@lid') && m.altJid?.endsWith('@s.whatsapp.net') ? m.altJid : m.chatJid;
+      const list = byChat.get(key) ?? [];
       list.push(m);
-      byChat.set(m.chatJid, list);
+      byChat.set(key, list);
     }
     let imported = 0;
     for (const [jid, all] of byChat) {
-      if (all.length < HISTORY_MIN_MESSAGES || !all.some((m) => m.fromMe) || !all.some((m) => !m.fromMe)) continue;
-      const muted = await this.db.contact.findFirst({ where: { OR: [{ waJid: jid }, { waAltJid: jid }], botMuted: true }, select: { id: true } });
-      if (muted) continue;
       const list = [...all].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()).slice(-HISTORY_MAX_MESSAGES);
+      if (list.length < HISTORY_MIN_MESSAGES || !list.some((m) => m.fromMe) || !list.some((m) => !m.fromMe)) continue;
+      const ids = [...new Set(all.flatMap((m) => [m.chatJid, m.altJid]).filter((x): x is string => !!x))];
+      const muted = await this.db.contact.findFirst({ where: { OR: [{ waJid: { in: ids } }, { waAltJid: { in: ids } }], botMuted: true }, select: { id: true } });
+      if (muted) continue;
       const hash = sha256(`history|${jid}|${list.at(-1)!.externalId}`);
       if (await this.db.importedChat.findUnique({ where: { sha256: hash } })) continue;
       // Etiquetas internas (sin espacios, no aparecen en el texto); el número de la clienta no se guarda.

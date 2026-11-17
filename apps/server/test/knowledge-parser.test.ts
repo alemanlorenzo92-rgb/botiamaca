@@ -63,5 +63,6 @@ describe('parser de chats exportados', () => {
     const names = new Map([['Male Style', 'Dueña'], ['Juana Pérez', 'Cliente 1']]);
     expect(anonymize('Hola Juana! Gracias por escribir a Male Style 💖', names)).toBe('Hola Cliente 1! Gracias por escribir a Male Style 💖');
     expect(anonymize('Vivo en frente de Male Style sobre Belgrano 450', names)).not.toMatch(/450/);
+    expect(anonymize('Hola Juana \uE000 Male Style', names)).toBe('Hola Cliente 1 \uE000 Male Style');
   });
 });

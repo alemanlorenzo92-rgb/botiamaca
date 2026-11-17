@@ -188,6 +188,7 @@ export function registerConversationRoutes(c: Container) {
             notes: z.string().max(2000).nullable().optional(),
             memorySummary: z.string().max(2000).nullable().optional(),
             marketingConsent: z.boolean().optional(),
+            botMuted: z.boolean().optional(),
           }),
           request.body,
         );

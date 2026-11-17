@@ -17,6 +17,7 @@ export interface Contact {
   notes: string | null;
   memorySummary: string | null;
   marketingConsent: boolean;
+  botMuted: boolean;
   lastMessageAt: string | null;
   conversation?: { id: string; status: string } | null;
 }

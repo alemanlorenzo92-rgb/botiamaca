@@ -106,6 +106,24 @@ function ContactDetail({ id, onSaved }: { id: string; onSaved: () => void }) {
         Memoria de la IA
         <textarea rows={4} value={form.memorySummary} onChange={(e) => setForm({ ...form, memorySummary: e.target.value })} />
       </label>
+      <label className="row">
+        <input
+          type="checkbox"
+          style={{ width: 'auto' }}
+          checked={c.botMuted}
+          onChange={async (e) => {
+            setMsg(null);
+            try {
+              await api(`/contacts/${id}`, { method: 'PATCH', body: { botMuted: e.target.checked } });
+              onSaved();
+              await reload();
+            } catch (err) {
+              setMsg(err instanceof Error ? err.message : String(err));
+            }
+          }}
+        />
+        El bot no le responde nunca (familia, amigos, proveedores): lo atendés siempre vos
+      </label>
       <div className="row">
         <button className="primary" onClick={save}>
           Guardar

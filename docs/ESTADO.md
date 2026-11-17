@@ -109,6 +109,15 @@ mayorista), no inventar un precio sin cargar, registrar tokens y latencia en `ai
 dueña y derivar ante un error de la API. Una respuesta típica consumió unos 9.000 tokens de entrada y 300 de salida, y
 tardó unos 8 segundos.
 
+## Verificado con WhatsApp real (número de prueba)
+
+Con el bot corriendo localmente y un número de prueba vinculado por QR: saludo, consulta de precio sin catálogo
+cargado (no inventa), Shimmer Wall sin precio (deriva a la dueña), pedido de hablar con la dueña, tomar la
+conversación desde el panel, responder, devolverla a la IA y que la dueña escriba desde el celular (la IA se corre).
+
+En esa prueba el bot les respondió a contactos personales del celular. Por eso cada contacto tiene ahora el interruptor
+"El bot no le responde nunca" (Contactos y Bandeja), que se controla en el backend (`ReplyGuard`).
+
 ## Falta probar (necesita credenciales)
 
 - **WhatsApp real:** vincular un número de prueba y verificar recepción, respuestas, fotos y videos.

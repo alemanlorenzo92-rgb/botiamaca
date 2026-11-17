@@ -220,6 +220,9 @@ export class WhatsAppGateway implements WhatsAppTransport {
 
   async stop(): Promise<void> {
     if (this.historyTimer) clearTimeout(this.historyTimer);
+    const pending = this.historyBuffer;
+    this.historyBuffer = [];
+    if (pending.length) await this.onHistory(pending, this.sock?.user?.name ?? null).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
     this.stopping = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.sock?.end(undefined);

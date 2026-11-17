@@ -46,6 +46,8 @@ describe('parser de chats exportados', () => {
       ['Gracias Ana Te paso el comprobante', 'Gracias [nombre] Te paso el comprobante'],
       ['Seguime en @juani.ok', 'Seguime en [usuario]'],
       ['Envialo a Belgrano 450', 'Envialo a [dirección]'],
+      ['mi dirección es belgrano 450 y llega en 2 días', 'mi dirección es [dirección]'],
+      ['envialo a belgrano 450 en 2 días', 'envialo a [dirección]'],
       ['Se entrega en 10 días hábiles en Córdoba', 'Se entrega en 10 días hábiles en Córdoba'],
       ['Entrega en 48 hs y el envío a $3500 en Córdoba', 'Entrega en 48 hs y el envío a $3500 en Córdoba'],
       ['Hola Cliente 1! Buenas tardes, el Glitter Bar para 50 personas el sábado está disponible', 'Hola Cliente 1! Buenas tardes, el Glitter Bar para 50 personas el sábado está disponible'],

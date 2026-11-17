@@ -1,9 +1,10 @@
 /** Quita datos personales de un texto antes de guardarlo o mandarlo a OpenAI. */
 const STREET = String.raw`(?:calle|av(?:enida|da)?\.?|bv\.?|bulevar|boulevard|pasaje|psje\.?|diagonal|camino)`;
-/** Lo que sigue a "entrega en…" solo es dirección si tiene un nombre propio y no es un plazo o cantidad. */
-const NOT_ADDRESS = /\d+\s*(?:d[ií]as?|hs?|horas?|semanas?|mes(?:es)?|minutos?|min|unidades?|u|personas?|%)(?!\p{L})|\$\s*\d/iu;
+/** Después de "envialo a / entrega en" hay dirección si aparece palabra + número que no sea plazo, cantidad ni monto. */
+const STREET_NUMBER =
+  /\p{L}{3,}\.?\s+(?:n[°º.]?\s*)?\d{1,5}(?!\d|\s*(?:d[ií]as?|hs?|horas?|semanas?|mes(?:es)?|minutos?|min|unidades?|u|personas?|%)(?!\p{L}))/iu;
 const addressAfter = (m: string, lead: string, sep: string, rest: string) =>
-  /\p{Lu}/u.test(rest) && !NOT_ADDRESS.test(rest) ? `${lead}${sep}[dirección]` : m;
+  STREET_NUMBER.test(rest) ? `${lead}${sep}[dirección]` : m;
 
 const RULES: [RegExp, string | ((m: string, ...g: string[]) => string)][] = [
   [/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]'],
@@ -17,7 +18,8 @@ const RULES: [RegExp, string | ((m: string, ...g: string[]) => string)][] = [
   [new RegExp(String.raw`(?<!\p{L})${STREET}\s+[\p{L}\d°º.' ]{2,40}?\s+(?:n[°º.]?\s*)?\d{1,5}(?!\d)`, 'giu'), '[dirección]'],
   [/(?<!\p{L})(piso|dpto\.?|depto\.?|departamento)\s*\d{1,3}\s*[°º]?\s*(?:[a-z](?!\p{L}))?/giu, '[dirección]'],
   [/(?<!\p{L})(c\.?\s?p\.?|c[oó]digo postal)\s*:?\s*[a-z]?\d{4}[a-z]{0,3}(?!\p{L})/giu, '$1 [código postal]'],
-  [/(?<!\p{L})(direcci[oó]n|domicilio|vivo en|env[ií]a(?:lo|melo|mela|la)? a|entreg(?:a|ar|alo) en)(\s*(?:es)?\s*:?\s*)([^\n.,;!?]*\d[^\n.,;!?]*)/giu, (m, lead, sep, rest) => addressAfter(m, lead!, sep!, rest!)],
+  [/(?<!\p{L})(direcci[oó]n|domicilio|vivo en)(\s*(?:es)?\s*:?\s*)[^\n.,;!?]*\d[^\n.,;!?]*/giu, '$1$2[dirección]'],
+  [/(?<!\p{L})(env[ií]a(?:lo|melo|mela|la)? a|entreg(?:a|ar|alo) en)(\s*)([^\n.,;!?]*\d[^\n.,;!?]*)/giu, (m, lead, sep, rest) => addressAfter(m, lead!, sep!, rest!)],
   [/(?<!\p{L})([Bb]arrio|[Bb]° ?)\s*\p{Lu}[\p{L}'’]*(?:\s+\p{Lu}[\p{L}'’]*){0,2}/gu, '$1 [barrio]'],
 ];
 

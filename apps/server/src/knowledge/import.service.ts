@@ -182,7 +182,7 @@ export class ChatImportService {
         this.logger.error({ err: error }, 'no se pudo aprender de un chat del historial');
       }
     }
-    if (imported) this.logger.info({ imported }, 'historial de WhatsApp importado para aprender');
+    this.logger.info({ messages: messages.length, chats: byChat.size, imported }, 'historial de WhatsApp procesado para aprender');
     return { imported };
   }
 

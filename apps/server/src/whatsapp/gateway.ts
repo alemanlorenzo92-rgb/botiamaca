@@ -149,7 +149,8 @@ export class WhatsAppGateway implements WhatsAppTransport {
     });
 
     // Historial que WhatsApp manda al vincular: no se responde, solo se usa para aprender.
-    sock.ev.on('messaging-history.set', ({ messages }) => {
+    sock.ev.on('messaging-history.set', ({ messages, chats, syncType, isLatest }) => {
+      this.logger.info({ messages: messages.length, chats: chats.length, syncType, isLatest }, 'historial de WhatsApp recibido');
       this.historyOwner = sock.user?.name ?? this.historyOwner;
       for (const raw of messages) {
         const mapped = mapWAMessage(raw);

@@ -36,7 +36,7 @@ Esta guía es para que una persona haga el despliegue. Nada en el repositorio de
    ```bash
    cd apps/server && node dist/cli.js user:create --email duena@ejemplo.com --name "Nombre"
    ```
-   Para los volúmenes, la app necesita la variable `RAILWAY_RUN_UID=0`: Railway monta `/data` como root.
+   Para los volúmenes, la app necesita la variable `RAILWAY_RUN_UID=0`: Railway monta `/data` como root. El contenedor arranca como root solo para corregir los permisos de `/data` y después ejecuta el servidor como el usuario `node`.
 3. Entrar a `PUBLIC_URL`, iniciar sesión, ir a **WhatsApp** y escanear el QR con el teléfono del negocio.
 4. Verificar `GET /health` → `{"ok":true,"whatsapp":"CONNECTED"}`.
 

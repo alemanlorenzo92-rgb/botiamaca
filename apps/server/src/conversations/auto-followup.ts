@@ -1,11 +1,19 @@
 import type { PrismaClient } from '@prisma/client';
-import { isWithinBusinessHours } from '../core/hours.js';
+import { DEFAULT_TIME_ZONE } from '../core/hours.js';
 import type { Logger } from '../core/logger.js';
 import type { SettingsService } from '../core/settings.js';
 import type { MessageSender } from './sender.js';
 
-/** No se reabren chats que llevan más de una semana quietos. */
-const MAX_SILENCE_MS = 7 * 24 * 60 * 60 * 1000;
+/** No se reabren chats que llevan más de 10 días quietos. */
+const MAX_SILENCE_MS = 10 * 24 * 60 * 60 * 1000;
+
+/** Como la dueña: los seguimientos salen a las 10 de la mañana de un día hábil (lunes a viernes, hora de Argentina). */
+export function isFollowupWindow(now: Date, timeZone = DEFAULT_TIME_ZONE): boolean {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(now);
+  const weekday = parts.find((p) => p.type === 'weekday')?.value;
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value);
+  return weekday !== 'Sat' && weekday !== 'Sun' && hour === 10;
+}
 
 /**
  * Seguimiento automático, como lo hace la dueña: si la clienta no contesta la última respuesta de la IA,
@@ -25,7 +33,7 @@ export class AutoFollowupService {
     if (!this.sender.isReady()) return 0;
     const ai = await this.settings.getAi();
     if (!ai.enabled || !ai.followupAfterHours || !ai.followupMessage.trim()) return 0;
-    if (isWithinBusinessHours(ai.businessHours, now) === false) return 0;
+    if (!isFollowupWindow(now)) return 0;
     const cutoff = new Date(now.getTime() - ai.followupAfterHours * 60 * 60 * 1000);
     const candidates = await this.db.conversation.findMany({
       where: {

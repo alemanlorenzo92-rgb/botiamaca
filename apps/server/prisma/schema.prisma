@@ -566,7 +566,7 @@ model AiSetting {
   debounceSeconds     Int      @default(4) @map("debounce_seconds")
   historyMessages     Int      @default(20) @map("history_messages")
   /// Seguimiento automático si la clienta deja de responder (null = apagado). Una sola vez por silencio, sin precios.
-  followupAfterHours  Int?     @default(24) @map("followup_after_hours")
+  followupAfterHours  Int?     @default(72) @map("followup_after_hours")
   followupMessage     String   @default("¡Hola! ¿Pudiste ver lo que te pasé? Contame qué producto te interesó y te paso la info 😊") @map("followup_message")
   updatedAt           DateTime @updatedAt @map("updated_at")
 

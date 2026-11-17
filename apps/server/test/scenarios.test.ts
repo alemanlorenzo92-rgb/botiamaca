@@ -311,16 +311,24 @@ describe('proceso de venta de la dueña', () => {
     expect(String(llm.calls[1]!.instructions)).not.toContain('primera respuesta en esta conversación');
   });
 
-  it('seguimiento automático: uno solo si la clienta no responde, y ninguno si respondió', async () => {
+  it('seguimiento automático: a los 3 días, a las 10 de un día hábil, una sola vez', async () => {
     const { c, llm, transport } = createTestContainer();
     llm.push(textReply('¡Hola! ¿Qué producto te interesó?'));
     await customerSays(c, 'Hola, info?');
     const id = (await conversation()).id;
-    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
-    expect(await c.autoFollowups.runOnce(new Date(Date.now() + 60 * 60 * 1000))).toBe(0);
+    // A las 10 de un día hábil (13:00 UTC = 10:00 en Argentina), al menos 3 días después.
+    const at10 = (daysAhead: number, weekdayOk = true) => {
+      const d = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+      while (weekdayOk && (d.getUTCDay() === 0 || d.getUTCDay() === 6)) d.setUTCDate(d.getUTCDate() + 1);
+      d.setUTCHours(13, 0, 0, 0);
+      return d;
+    };
+    expect(await c.autoFollowups.runOnce(at10(1))).toBe(0);
+    const later = at10(4);
+    expect(await c.autoFollowups.runOnce(new Date(later.getTime() + 3 * 60 * 60 * 1000))).toBe(0);
     expect(await c.autoFollowups.runOnce(later)).toBe(1);
     expect(transport.sent.at(-1)!.text).toContain('Pudiste ver');
-    expect(await c.autoFollowups.runOnce(new Date(later.getTime() + 48 * 60 * 60 * 1000))).toBe(0);
+    expect(await c.autoFollowups.runOnce(at10(8))).toBe(0);
     const msgs = await db.message.count({ where: { conversationId: id, author: 'AI' } });
     expect(msgs).toBe(2);
   });

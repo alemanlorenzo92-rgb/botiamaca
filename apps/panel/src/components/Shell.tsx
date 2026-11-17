@@ -8,9 +8,12 @@ import { SessionContext } from '@/lib/session';
 import type { BusEvent, Me } from '@/lib/types';
 
 const NAV: { href: string; label: string; permission: string }[] = [
+  { href: '/dashboard', label: 'Inicio', permission: 'inbox' },
   { href: '/inbox', label: 'Bandeja', permission: 'inbox' },
   { href: '/contacts', label: 'Contactos', permission: 'contacts' },
   { href: '/catalog', label: 'Catálogo', permission: 'catalog' },
+  { href: '/library', label: 'Fotos y videos', permission: 'catalog' },
+  { href: '/knowledge', label: 'Conocimiento', permission: 'knowledge' },
   { href: '/orders', label: 'Pedidos', permission: 'orders' },
   { href: '/leads', label: 'Eventos', permission: 'leads' },
   { href: '/followups', label: 'Seguimientos', permission: 'followups' },
@@ -42,6 +45,7 @@ function AiSwitch({ can }: { can: (p: string) => boolean }) {
 export function Shell({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
   const [live, setLive] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const listeners = useRef(new Set<(e: BusEvent) => void>());
   const pathname = usePathname();
 
@@ -102,11 +106,12 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <SessionContext.Provider value={value}>
       <div className="layout">
-        <aside className="sidebar">
-          <div className="brand">Bot vendedor</div>
+        <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
+          <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menú">☰ Male Style</button>
+          <div className="brand">Male Style</div>
           <nav>
             {NAV.filter((n) => value.can(n.permission)).map((n) => (
-              <Link key={n.href} href={n.href} className={pathname?.startsWith(n.href) ? 'active' : ''}>
+              <Link key={n.href} href={n.href} onClick={() => setMenuOpen(false)} className={pathname?.startsWith(n.href) ? 'active' : ''}>
                 {n.label}
               </Link>
             ))}

@@ -1,9 +1,7 @@
-import { createHmac } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { isWithinBusinessHours } from '../src/core/hours.js';
 import { shouldHandleUpsert } from '../src/whatsapp/gateway.js';
 import {
-  APP_SECRET,
   CUSTOMER_JID,
   conversation,
   createTestContainer,
@@ -15,7 +13,6 @@ import {
   seedProduct,
   textReply,
   toolCalls,
-  type FetchRoute,
 } from './helpers.js';
 
 beforeEach(resetDb);
@@ -115,7 +112,7 @@ describe('datos del negocio y eventos', () => {
   it('Shimmer Walls: sin info cargada lo informa y registra el lead', async () => {
     const { c, llm } = createTestContainer();
     llm.push(
-      toolCalls(['get_service_info', { service: 'SHIMMER_WALL' }]),
+      toolCalls(['search_service_information', { service: 'SHIMMER_WALL' }]),
       toolCalls([
         'save_event_lead',
         {
@@ -212,36 +209,6 @@ describe('robustez', () => {
     expect(await db.aiRun.findFirstOrThrow()).toMatchObject({ status: 'ERROR' });
   });
 
-  it('falla de Tiendanube: el webhook queda pendiente y se reprocesa luego', async () => {
-    let apiUp = false;
-    const tnProduct = {
-      id: 555, name: { es: 'Gorra' }, description: { es: '' }, handle: { es: 'gorra' }, published: true, free_shipping: false,
-      tags: '', brand: null, images: [], categories: [], attributes: [], updated_at: new Date().toISOString(),
-      variants: [{ id: 9001, product_id: 555, price: '12000.00', promotional_price: null, stock_management: true, stock: 7, sku: 'G1', values: [] }],
-    };
-    const routes: FetchRoute = (url) => (url.endsWith('/products/555') ? (apiUp ? { status: 200, body: tnProduct } : { status: 503 }) : undefined);
-    const { c } = createTestContainer({ routes });
-    const body = Buffer.from(JSON.stringify({ store_id: 999, event: 'product/updated', id: 555 }));
-    const sig = createHmac('sha256', APP_SECRET).update(body).digest('hex');
-
-    await expect(c.webhooks.receive(body, 'firma-mala')).rejects.toThrow(/Firma/);
-    const r = await c.webhooks.receive(body, sig);
-    expect(r.status).toBe('accepted');
-    expect((await c.webhooks.receive(body, sig)).status).toBe('duplicate');
-    if (r.status === 'accepted') await c.webhooks.process(r.eventId);
-    const pending = await db.webhookEvent.findFirstOrThrow();
-    expect(pending.processedAt).toBeNull();
-    expect(pending.error).toBeTruthy();
-    expect(await db.product.count()).toBe(0);
-
-    apiUp = true;
-    expect(await c.webhooks.processPending()).toBe(1);
-    expect((await db.webhookEvent.findFirstOrThrow()).processedAt).not.toBeNull();
-    const product = await db.product.findFirstOrThrow({ include: { variants: { include: { inventory: true } } } });
-    expect(product.name).toBe('Gorra');
-    expect(product.variants[0]?.inventory?.quantity).toBe(7);
-  });
-
   it('cliente que vuelve: usa la memoria y el historial, y reabre la conversación', async () => {
     const contact = await db.contact.create({
       data: { waJid: CUSTOMER_JID, name: 'Juli', buyerType: 'WHOLESALE', memorySummary: 'Revende en Villa María; le interesan jeans talle 40-44.' },
@@ -296,27 +263,6 @@ describe('casos de borde', () => {
     await customerSays(c, 'Hola');
     expect((await conversation()).status).toBe('AI_PAUSED');
     expect(transport.sent).toHaveLength(0);
-  });
-
-  it('webhook: el mismo aviso después de procesado se vuelve a consultar', async () => {
-    const tnProduct = {
-      id: 77, name: { es: 'Media' }, description: { es: '' }, handle: { es: 'media' }, published: true, free_shipping: false,
-      tags: '', brand: null, images: [], categories: [], attributes: [], updated_at: new Date().toISOString(),
-      variants: [{ id: 7701, product_id: 77, price: '3000.00', promotional_price: null, stock_management: true, stock: 5, sku: 'M1', values: [] }],
-    };
-    let stock = 5;
-    const { c } = createTestContainer({
-      routes: (url) => (url.endsWith('/products/77') ? { status: 200, body: { ...tnProduct, variants: [{ ...tnProduct.variants[0], stock }] } } : undefined),
-    });
-    const body = Buffer.from(JSON.stringify({ store_id: 999, event: 'product/updated', id: 77 }));
-    const sig = createHmac('sha256', APP_SECRET).update(body).digest('hex');
-    const first = await c.webhooks.receive(body, sig);
-    if (first.status === 'accepted') await c.webhooks.process(first.eventId);
-    stock = 2;
-    const second = await c.webhooks.receive(body, sig);
-    expect(second.status).toBe('accepted');
-    if (second.status === 'accepted') await c.webhooks.process(second.eventId);
-    expect((await db.inventory.findFirstOrThrow()).quantity).toBe(2);
   });
 
   it('horario de atención', () => {

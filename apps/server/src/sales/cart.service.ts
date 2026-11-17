@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { EventBus } from '../core/events.js';
-import { RETAIL_PRICE_LIST, WHOLESALE_PRICE_LIST } from '../catalog/catalog-sync.service.js';
+import { RETAIL_PRICE_LIST, WHOLESALE_PRICE_LIST } from '../catalog/catalog.service.js';
 import { stockOf } from '../catalog/catalog.service.js';
 
 export class CartError extends Error {}

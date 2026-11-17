@@ -1,6 +1,8 @@
 import type { BuyerType, Prisma, PrismaClient } from '@prisma/client';
 import { normalize, truncate } from '../core/text.js';
-import { RETAIL_PRICE_LIST, WHOLESALE_PRICE_LIST } from './catalog-sync.service.js';
+
+export const RETAIL_PRICE_LIST = 'retail';
+export const WHOLESALE_PRICE_LIST = 'wholesale';
 
 const productInclude = {
   variants: {
@@ -42,13 +44,6 @@ function tokens(query: string): string[] {
 /** Consultas de catálogo para la IA y el panel. Solo devuelve datos sincronizados. */
 export class CatalogService {
   constructor(private readonly db: PrismaClient) {}
-
-  async lastSync() {
-    return this.db.syncRun.findFirst({
-      where: { provider: 'tiendanube', status: { in: ['OK', 'PARTIAL'] } },
-      orderBy: { startedAt: 'desc' },
-    });
-  }
 
   private summarize(p: ProductWithVariants, buyerType: BuyerType) {
     const variants = p.variants.map((v) => this.variantView(v, buyerType));
@@ -100,8 +95,7 @@ export class CatalogService {
       results.push(s);
       if (results.length >= limit) break;
     }
-    const sync = await this.lastSync();
-    return { results, total_matches: scored.length, catalog_synced_at: sync?.finishedAt ?? null };
+    return { results, total_matches: scored.length };
   }
 
   async details(productId: string, buyerType: BuyerType = 'UNKNOWN') {
@@ -111,10 +105,16 @@ export class CatalogService {
       ...this.summarize(p, buyerType),
       variants: p.variants.map((v) => this.variantView(v, buyerType)),
       description: truncate(p.description ?? '', 1200),
+      features: p.features,
+      usage: p.usage,
+      recommendations: p.recommendations,
+      faqs: p.faqs,
+      media: (
+        await this.db.mediaAsset.findMany({ where: { productId: p.id, active: true }, select: { id: true, kind: true, title: true }, take: 6 })
+      ).map((m) => ({ media_id: m.id, kind: m.kind, title: m.title })),
       tags: p.tags,
       free_shipping: p.freeShipping,
       image: p.imageUrls[0] ?? null,
-      synced_at: p.syncedAt,
     };
   }
 
@@ -128,7 +128,7 @@ export class CatalogService {
   async stock(variantId: string) {
     const v = await this.variant(variantId);
     if (!v) return null;
-    return { variant_id: v.id, product: v.product.name, options: v.values.join(' / '), stock: stockOf(v), synced_at: v.inventory?.syncedAt ?? null };
+    return { variant_id: v.id, product: v.product.name, options: v.values.join(' / '), stock: stockOf(v) };
   }
 
   /** Precio según tipo de comprador. Nunca inventa: si no hay precio cargado lo dice. */

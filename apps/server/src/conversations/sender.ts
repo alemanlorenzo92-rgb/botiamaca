@@ -1,12 +1,14 @@
 import type { MessageAuthor, PrismaClient } from '@prisma/client';
 import type { EventBus } from '../core/events.js';
-import type { WhatsAppTransport } from '../whatsapp/transport.js';
+import type { MediaService } from '../media/media.service.js';
+import { WhatsAppNotConnectedError, type WhatsAppTransport } from '../whatsapp/transport.js';
 
 export class MessageSender {
   constructor(
     private readonly db: PrismaClient,
     private readonly transport: WhatsAppTransport,
     private readonly bus: EventBus,
+    private readonly media: MediaService,
   ) {}
 
   /** Envía un texto y lo registra. Devuelve el mensaje guardado (SENT o FAILED). */
@@ -51,6 +53,65 @@ export class MessageSender {
       this.bus.publish({ type: 'message.created', conversationId: conversation.id, messageId: saved.id });
       return saved;
     }
+  }
+
+  /**
+   * Envía una foto o video de la biblioteca y lo registra.
+   * Reintenta una vez ante fallas transitorias; si el archivo falta o WhatsApp está caído, queda FAILED.
+   */
+  async sendMedia(params: {
+    conversationId: string;
+    mediaId: string;
+    caption?: string | null;
+    author: Exclude<MessageAuthor, 'CUSTOMER'>;
+    userId?: string | null;
+    requireActive?: boolean;
+  }) {
+    const conversation = await this.db.conversation.findUniqueOrThrow({
+      where: { id: params.conversationId },
+      include: { contact: true },
+    });
+    let loaded: Awaited<ReturnType<MediaService['load']>> | null = null;
+    let loadError: string | null = null;
+    try {
+      loaded = await this.media.load(params.mediaId, { requireActive: params.requireActive });
+    } catch (error) {
+      loadError = error instanceof Error ? error.message : String(error);
+    }
+    const message = await this.db.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: 'OUTBOUND',
+        author: params.author,
+        type: loaded?.asset.kind ?? 'IMAGE',
+        text: params.caption ?? null,
+        mediaMime: loaded?.asset.mime ?? null,
+        mediaId: loaded ? params.mediaId : null,
+        status: 'PENDING',
+        sentByUserId: params.userId ?? null,
+      },
+    });
+    const fail = async (error: string) => {
+      const saved = await this.db.message.update({ where: { id: message.id }, data: { status: 'FAILED', error } });
+      this.bus.publish({ type: 'message.created', conversationId: conversation.id, messageId: saved.id });
+      return saved;
+    };
+    if (!loaded) return fail(loadError ?? 'Archivo no disponible');
+    const payload = { kind: loaded.asset.kind, data: loaded.data, mimetype: loaded.asset.mime, caption: params.caption ?? null };
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { externalId } = await this.transport.sendMedia(conversation.contact.waJid, payload);
+        const saved = await this.db.message.update({ where: { id: message.id }, data: { status: 'SENT', externalId } });
+        await this.db.conversation.update({ where: { id: conversation.id }, data: { lastOutboundAt: new Date() } });
+        this.bus.publish({ type: 'message.created', conversationId: conversation.id, messageId: saved.id });
+        return saved;
+      } catch (error) {
+        lastError = error;
+        if (error instanceof WhatsAppNotConnectedError || !this.transport.isConnected()) break;
+      }
+    }
+    return fail(lastError instanceof Error ? lastError.message : String(lastError));
   }
 
   isReady(): boolean {

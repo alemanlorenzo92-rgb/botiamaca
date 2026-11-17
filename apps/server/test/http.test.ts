@@ -69,13 +69,37 @@ describe('API del panel', () => {
     expect((await db.conversation.findUniqueOrThrow({ where: { id: conv.id } })).status).toBe('HUMAN_ACTIVE');
   });
 
-  it('webhook de Tiendanube rechaza firmas inválidas', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/webhooks/tiendanube',
-      headers: { 'content-type': 'application/json', 'x-linkedstore-hmac-sha256': 'abc' },
-      payload: JSON.stringify({ store_id: 999, event: 'product/updated', id: 1 }),
+  it('biblioteca: alta de producto, subida de foto (dedupe, formato inválido) y vista previa', async () => {
+    const { cookie } = await login('admin@test.local', 'clave-admin-123');
+    const created = await app.inject({
+      method: 'POST', url: '/api/catalog/products', headers: { cookie },
+      payload: { name: 'Glitter corporal', usage: 'Con gel', variants: [{ values: ['Dorado'], retailPrice: 3500, stock: null }] },
     });
-    expect(res.statusCode).toBe(401);
+    expect(created.statusCode).toBe(200);
+    const productId = created.json().product.id;
+    const list = await app.inject({ url: '/api/catalog/products', headers: { cookie } });
+    expect(list.json().products[0].variants[0].inventory).toBeNull();
+
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    const form = (file: Buffer, name: string) => {
+      const b = '----test';
+      const payload = Buffer.concat([
+        Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="title"\r\n\r\nFoto dorado\r\n`),
+        Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="productId"\r\n\r\n${productId}\r\n`),
+        Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+        file,
+        Buffer.from(`\r\n--${b}--\r\n`),
+      ]);
+      return { method: 'POST' as const, url: '/api/media', headers: { cookie, 'content-type': `multipart/form-data; boundary=${b}` }, payload };
+    };
+    const up = await app.inject(form(png, 'a.png'));
+    expect(up.statusCode).toBe(200);
+    expect(up.json()).toMatchObject({ duplicate: false, asset: { kind: 'IMAGE', title: 'Foto dorado', productId } });
+    expect((await app.inject(form(png, 'b.png'))).json().duplicate).toBe(true);
+    const bad = await app.inject(form(Buffer.from('hola'), 'x.png'));
+    expect(bad.statusCode).toBe(400);
+    const file = await app.inject({ url: `/api/media/${up.json().asset.id}/file`, headers: { cookie } });
+    expect(file.headers['content-type']).toBe('image/png');
+    expect((await app.inject({ url: `/api/media/${up.json().asset.id}/file` })).statusCode).toBe(401);
   });
 });

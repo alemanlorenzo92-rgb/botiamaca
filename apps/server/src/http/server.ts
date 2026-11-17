@@ -12,9 +12,10 @@ import { registerAdminRoutes } from './routes/admin.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerConversationRoutes } from './routes/conversations.js';
+import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerEventsRoute } from './routes/events.js';
+import { registerKnowledgeRoutes } from './routes/knowledge.js';
 import { registerSalesRoutes } from './routes/sales.js';
-import { registerWebhookRoutes } from './routes/webhooks.js';
 
 export interface ServerOptions {
   /** Carpeta del panel exportado (Next.js `out`). */
@@ -53,7 +54,8 @@ export async function buildServer(c: Container, options: ServerOptions = {}): Pr
   });
 
   app.setErrorHandler((error, request, reply) => {
-    if (error instanceof HttpError) return reply.status(error.statusCode).send({ error: error.message });
+    if (error instanceof HttpError) return reply.status(error.statusCode).send({ error: error.message, ...error.details });
+    if ((error as { code?: string }).code === 'P2025') return reply.status(404).send({ error: 'No existe' });
     if (error instanceof InvalidTransitionError) return reply.status(409).send({ error: error.message });
     const status = (error as { statusCode?: number }).statusCode;
     if (status && status < 500) return reply.status(status).send({ error: (error as Error).message });
@@ -66,12 +68,13 @@ export async function buildServer(c: Container, options: ServerOptions = {}): Pr
     return { ok: true, whatsapp: c.gateway?.getStatus().status ?? 'DISABLED' };
   });
 
-  await app.register(registerWebhookRoutes(c));
   await app.register(
     async (api) => {
       await api.register(registerAuthRoutes(c));
       await api.register(registerConversationRoutes(c));
       await api.register(registerCatalogRoutes(c));
+      await api.register(registerKnowledgeRoutes(c));
+      await api.register(registerDashboardRoutes(c));
       await api.register(registerSalesRoutes(c));
       await api.register(registerAdminRoutes(c));
       await api.register(registerEventsRoute(c));

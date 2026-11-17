@@ -13,7 +13,7 @@ import type { EventBus } from '../core/events.js';
 import type { Logger } from '../core/logger.js';
 import { clearAuthState, usePostgresAuthState } from './auth-state.js';
 import { mapWAMessage } from './message-mapper.js';
-import { WhatsAppNotConnectedError, type InboundWhatsAppMessage, type WhatsAppTransport } from './transport.js';
+import { WhatsAppNotConnectedError, type InboundWhatsAppMessage, type OutboundMedia, type WhatsAppTransport } from './transport.js';
 
 export type WhatsAppStatus = 'DISABLED' | 'DISCONNECTED' | 'CONNECTING' | 'QR' | 'CONNECTED' | 'LOGGED_OUT';
 
@@ -171,6 +171,19 @@ export class WhatsAppGateway implements WhatsAppTransport {
     return { externalId: sent.key.id };
   }
 
+  async sendMedia(jid: string, media: OutboundMedia): Promise<{ externalId: string }> {
+    if (!this.sock || !this.isConnected()) throw new WhatsAppNotConnectedError();
+    const caption = media.caption ?? undefined;
+    const sent = await this.sock.sendMessage(
+      jid,
+      media.kind === 'IMAGE'
+        ? { image: media.data, mimetype: media.mimetype, caption }
+        : { video: media.data, mimetype: media.mimetype, caption },
+    );
+    if (!sent?.key.id) throw new Error('WhatsApp no devolvió id de mensaje');
+    return { externalId: sent.key.id };
+  }
+
   /** Cierra la sesión vinculada y genera un QR nuevo. */
   async logout(): Promise<void> {
     try {
@@ -198,6 +211,9 @@ export class DisabledTransport implements WhatsAppTransport {
     return false;
   }
   async sendText(): Promise<{ externalId: string }> {
+    throw new WhatsAppNotConnectedError();
+  }
+  async sendMedia(): Promise<{ externalId: string }> {
     throw new WhatsAppNotConnectedError();
   }
 }

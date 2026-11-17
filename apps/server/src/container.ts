@@ -1,10 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
 import { AiOrchestrator, openAiLlm, type LlmClient } from './ai/orchestrator.js';
-import { CatalogSyncService } from './catalog/catalog-sync.service.js';
+import { CatalogAdminService } from './catalog/catalog-admin.service.js';
 import { CatalogService } from './catalog/catalog.service.js';
-import { TiendanubeClient } from './catalog/tiendanube.client.js';
-import { TiendanubeWebhookService } from './catalog/tiendanube-webhook.js';
+import { ServicesService } from './catalog/services.service.js';
 import { ConversationService } from './conversations/conversation.service.js';
 import { HandoffService } from './conversations/handoff.service.js';
 import { ReplyGuard } from './conversations/reply-guard.js';
@@ -20,14 +19,22 @@ import { FollowupsService } from './events/followups.service.js';
 import { LeadsService } from './events/leads.service.js';
 import { AuthService } from './http/auth.js';
 import { CartService } from './sales/cart.service.js';
+import { MediaService } from './media/media.service.js';
+import { LocalMediaStorage } from './media/storage.js';
 import { DisabledTransport, WhatsAppGateway } from './whatsapp/gateway.js';
+import type { MediaStorage } from './media/storage.js';
+import { localEmbedder, openAiEmbedder, type Embedder } from './knowledge/embedder.js';
+import { ChatImportService } from './knowledge/import.service.js';
+import { JobRunner } from './knowledge/jobs.js';
+import { KnowledgeService } from './knowledge/knowledge.service.js';
 import type { InboundWhatsAppMessage, WhatsAppTransport } from './whatsapp/transport.js';
 
 export interface ContainerOverrides {
   db?: PrismaClient;
   transport?: WhatsAppTransport;
   llm?: LlmClient | null;
-  tiendanube?: TiendanubeClient | null;
+  storage?: MediaStorage;
+  embedder?: Embedder;
 }
 
 /** Arma todos los servicios. Un solo proceso: Baileys exige una única instancia. */
@@ -46,52 +53,44 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
       : null;
   const transport: WhatsAppTransport = overrides.transport ?? gateway ?? new DisabledTransport();
 
-  const sender = new MessageSender(db, transport, bus);
+  const media = new MediaService(db, overrides.storage ?? new LocalMediaStorage(env.MEDIA_DIR), {
+    maxImageBytes: env.MEDIA_MAX_IMAGE_MB * 1024 * 1024,
+    maxVideoBytes: env.MEDIA_MAX_VIDEO_MB * 1024 * 1024,
+  });
+  const sender = new MessageSender(db, transport, bus, media);
   const handoff = new HandoffService(db, bus, audit, settings, sender);
   const conversations = new ConversationService(db, bus, handoff);
 
-  const tiendanube =
-    overrides.tiendanube !== undefined
-      ? overrides.tiendanube
-      : env.TIENDANUBE_STORE_ID && env.TIENDANUBE_ACCESS_TOKEN
-        ? new TiendanubeClient(
-            {
-              storeId: env.TIENDANUBE_STORE_ID,
-              accessToken: env.TIENDANUBE_ACCESS_TOKEN,
-              userAgent: env.TIENDANUBE_USER_AGENT,
-              apiVersion: env.TIENDANUBE_API_VERSION,
-            },
-            logger,
-          )
-        : null;
-  const catalogSync = new CatalogSyncService(db, tiendanube, logger);
-  const catalog = new CatalogService(db);
-  const webhooks = new TiendanubeWebhookService(
-    db,
-    catalogSync,
-    { appSecret: env.TIENDANUBE_APP_SECRET, storeId: env.TIENDANUBE_STORE_ID },
-    logger,
-  );
 
+  const catalog = new CatalogService(db);
+  const catalogAdmin = new CatalogAdminService(db);
+  const services = new ServicesService(db);
   const cart = new CartService(db, bus);
   const leads = new LeadsService(db, bus);
   const followups = new FollowupsService(db, bus, logger);
 
-  const llm =
-    overrides.llm !== undefined
-      ? overrides.llm
-      : env.OPENAI_API_KEY
-        ? openAiLlm(new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 1, timeout: env.OPENAI_TIMEOUT_MS }))
-        : null;
+  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 1, timeout: env.OPENAI_TIMEOUT_MS }) : null;
+  const llm = overrides.llm !== undefined ? overrides.llm : openai ? openAiLlm(openai) : null;
+  const embedder = overrides.embedder ?? (openai ? openAiEmbedder(openai, env.OPENAI_EMBEDDING_MODEL) : localEmbedder);
+  const jobs = new JobRunner(db, logger);
+  const knowledge = new KnowledgeService(db, llm, embedder, logger, { model: env.OPENAI_MODEL });
+  const chatImport = new ChatImportService(db, media, jobs, logger, {
+    maxUncompressedBytes: env.IMPORT_MAX_MB * 1024 * 1024,
+    maxFileBytes: Math.max(env.MEDIA_MAX_IMAGE_MB, env.MEDIA_MAX_VIDEO_MB) * 1024 * 1024,
+  });
+  jobs.on('knowledge.extract', async (payload) => {
+    await knowledge.extractChat((payload as { chatId: string }).chatId);
+  });
   const ai = new AiOrchestrator(
     llm,
-    { db, catalog, cart, leads, followups, handoff, settings, audit },
+    { db, catalog, cart, leads, followups, handoff, settings, audit, media, sender, services },
     {
       model: env.OPENAI_MODEL,
       maxOutputTokens: env.OPENAI_MAX_OUTPUT_TOKENS,
       requestTimeoutMs: env.OPENAI_TIMEOUT_MS,
     },
     logger,
+    knowledge,
   );
   const guard = new ReplyGuard(db, settings);
   const worker = new ReplyWorker(db, guard, ai, sender, handoff, settings, logger);
@@ -119,8 +118,12 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     handoff,
     conversations,
     catalog,
-    catalogSync,
-    webhooks,
+    catalogAdmin,
+    services,
+    media,
+    jobs,
+    knowledge,
+    chatImport,
     cart,
     leads,
     followups,

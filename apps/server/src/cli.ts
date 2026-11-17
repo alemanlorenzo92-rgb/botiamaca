@@ -3,6 +3,8 @@ import { Writable } from 'node:stream';
 import { parseArgs } from 'node:util';
 import { PrismaClient } from '@prisma/client';
 import { AuditService } from './core/audit.js';
+import { CatalogAdminService } from './catalog/catalog-admin.service.js';
+import { ServicesService } from './catalog/services.service.js';
 import { AuthService, DEFAULT_ROLES } from './http/auth.js';
 
 export const DEFAULT_AI_SETTINGS = {
@@ -23,6 +25,8 @@ export async function seed(db: PrismaClient) {
     });
   }
   await db.aiSetting.upsert({ where: { id: 1 }, create: { id: 1, ...DEFAULT_AI_SETTINGS }, update: {} });
+  await new ServicesService(db).ensureDefaults();
+  await new CatalogAdminService(db).ensurePriceLists();
 }
 
 function askHidden(question: string): Promise<string> {

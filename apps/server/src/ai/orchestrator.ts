@@ -228,6 +228,7 @@ export class AiOrchestrator implements AiResponder {
             call_id: call.call_id,
             output: truncate(JSON.stringify(payload ?? null), MAX_TOOL_OUTPUT_CHARS),
           });
+          if (ctx.handedOff) break;
         }
 
         if (ctx.handedOff) {

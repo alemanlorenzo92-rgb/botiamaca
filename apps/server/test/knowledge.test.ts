@@ -76,6 +76,8 @@ describe('importación de chats', () => {
     expect(await importText(c, `${opening}\n10/11/2026, 09:01 - Pedro Gómez: Hola, hacen eventos?`)).toMatchObject({ inserted: 2 });
     const longer = `09/11/2026, 20:00 - Juana Pérez: Te escribo mañana\n${opening}\n10/11/2026, 09:01 - Juana Pérez: Hola, precio del glitter?`;
     expect(await importText(c, longer)).toMatchObject({ inserted: 1, skipped: 2 });
+    const twice = `${longer}\n10/11/2026, 09:02 - Male Style: Dale!\n10/11/2026, 09:02 - Juana Pérez: Y el de 50g?\n10/11/2026, 09:02 - Male Style: Dale!`;
+    expect(await importText(c, twice)).toMatchObject({ inserted: 3, skipped: 3 });
   });
 
   it('una importación que falla no queda a medias y se puede reintentar', async () => {

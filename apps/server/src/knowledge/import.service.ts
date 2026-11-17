@@ -135,8 +135,15 @@ export class ChatImportService {
     const chat = { id: chatId };
     const sig = (m: ParsedChat['messages'][number]) => `${m.sentAt.toISOString()}|${m.author}|${m.text}|${m.mediaFile ?? ''}`;
     // El chat se identifica por la clienta (primer participante que no es la dueña), no por el contenido del export:
-    // así exports solapados del mismo chat dan las mismas claves aunque uno tenga más historia o más participantes.
+    // así exports solapados del mismo chat (de a dos: dueña y clienta) dan las mismas claves aunque uno tenga más historia.
     const customer = parsed.messages.find((m) => m.author !== owner)?.author ?? '';
+    // Mensajes idénticos en el mismo minuto (p. ej. "Dale!" dos veces) se distinguen por su número de aparición.
+    const seen = new Map<string, number>();
+    const occurrence = parsed.messages.map((m) => {
+      const n = (seen.get(sig(m)) ?? 0) + 1;
+      seen.set(sig(m), n);
+      return n;
+    });
     const rows = parsed.messages.map((m, position) => ({
       chatId: chat.id,
       position,
@@ -146,7 +153,7 @@ export class ChatImportService {
       text: anonymize(m.text, aliases),
       mediaFile: m.mediaFile,
       // Nombres reales hasheados (no se guardan): una respuesta igual a la misma hora en otro chat no choca.
-      dedupeKey: sha256(`${customer}#${sig(m)}`),
+      dedupeKey: sha256(`${customer}#${sig(m)}#${occurrence[position]}`),
     }));
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 1000) {

@@ -36,6 +36,14 @@ describe('API del panel', () => {
     expect((await app.inject({ url: '/api/auth/me', headers: { cookie } })).statusCode).toBe(401);
   });
 
+  it('se puede crear y entrar con un usuario sin mail', async () => {
+    const { cookie } = await login('admin@test.local', 'clave-admin-123');
+    const created = await app.inject({ method: 'POST', url: '/api/users', headers: { cookie }, payload: { email: 'malestyle', name: 'Male Style', password: 'malestilo1', roleCode: 'admin' } });
+    expect(created.statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/users', headers: { cookie }, payload: { email: 'no vale', name: 'X', password: 'malestilo1', roleCode: 'admin' } })).statusCode).toBe(400);
+    expect((await login('MaleStyle', 'malestilo1')).res.statusCode).toBe(200);
+  });
+
   it('una sola administradora: no hay rol de vendedor y sin sesión todo devuelve 401', async () => {
     await expect(c.auth.createUser({ email: 'vende@test.local', name: 'Vende', password: 'clave-vende-123', roleCode: 'agent' })).rejects.toThrow('rol');
     for (const url of ['/api/conversations', '/api/settings/ai', '/api/users', '/api/dashboard']) {

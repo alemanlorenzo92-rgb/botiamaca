@@ -61,19 +61,28 @@ export class TiendanubeWebhookService {
     if (this.config.storeId && payload.store_id !== undefined && String(payload.store_id) !== this.config.storeId) {
       return { status: 'ignored', reason: 'Otra tienda' };
     }
+    const dedupeKey = `${PROVIDER}:${sha256(rawBody.toString('utf8'))}`;
     try {
       const row = await this.db.webhookEvent.create({
         data: {
           provider: PROVIDER,
-          dedupeKey: `${PROVIDER}:${sha256(rawBody.toString('utf8'))}`,
+          dedupeKey,
           event: payload.event ?? 'unknown',
           payload: payload as Prisma.InputJsonValue,
         },
       });
       return { status: 'accepted', eventId: row.id };
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return { status: 'duplicate' };
-      throw error;
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
+      // Tiendanube manda el mismo body ({store_id, event, id}) en cada cambio del producto:
+      // si el anterior ya se procesó, es un cambio nuevo y hay que volver a consultar el producto.
+      const rearmed = await this.db.webhookEvent.updateMany({
+        where: { dedupeKey, processedAt: { not: null } },
+        data: { processedAt: null, error: null, receivedAt: new Date() },
+      });
+      if (!rearmed.count) return { status: 'duplicate' };
+      const row = await this.db.webhookEvent.findUniqueOrThrow({ where: { dedupeKey } });
+      return { status: 'accepted', eventId: row.id };
     }
   }
 
@@ -96,6 +105,7 @@ export class TiendanubeWebhookService {
   private async apply(eventId: string, event: string, payload: TnWebhookPayload): Promise<void> {
     try {
       if (event.startsWith('product/') && payload.id !== undefined) {
+        await this.sync.idle();
         const result = await this.sync.syncProduct(String(payload.id));
         this.logger.info({ event, productId: payload.id, result }, 'webhook de producto procesado');
       }

@@ -148,6 +148,11 @@ export class CatalogSyncService {
     return 'updated';
   }
 
+  /** Espera a que termine la sincronización completa en curso (para no pisar datos más nuevos). */
+  async idle(): Promise<void> {
+    await this.running?.catch(() => undefined);
+  }
+
   /** Sincronización completa. Si ya hay una corriendo, espera esa. */
   syncAll(): Promise<unknown> {
     if (!this.running) {

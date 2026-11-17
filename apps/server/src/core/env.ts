@@ -25,12 +25,13 @@ const schema = z.object({
   OPENAI_MODEL: z.string().default('gpt-5-mini'),
   OPENAI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(800),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
-  TIENDANUBE_STORE_ID: z.string().optional(),
-  TIENDANUBE_ACCESS_TOKEN: z.string().optional(),
-  TIENDANUBE_APP_SECRET: z.string().optional(),
-  TIENDANUBE_USER_AGENT: z.string().default('WhatsAppSalesBot (contacto@ejemplo.com)'),
-  TIENDANUBE_API_VERSION: z.string().default('2025-03'),
-  CATALOG_SYNC_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
+  OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  /// Carpeta de la biblioteca multimedia (en producción, un volumen persistente)
+  MEDIA_DIR: z.string().default('./data/media'),
+  MEDIA_MAX_IMAGE_MB: z.coerce.number().positive().default(10),
+  /// WhatsApp acepta videos de hasta 16 MB
+  MEDIA_MAX_VIDEO_MB: z.coerce.number().positive().default(16),
+  IMPORT_MAX_MB: z.coerce.number().positive().default(200),
 });
 
 export type Env = z.infer<typeof schema>;

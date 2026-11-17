@@ -1,10 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
 import { AiOrchestrator, openAiLlm, type LlmClient } from './ai/orchestrator.js';
-import { CatalogSyncService } from './catalog/catalog-sync.service.js';
 import { CatalogService } from './catalog/catalog.service.js';
-import { TiendanubeClient } from './catalog/tiendanube.client.js';
-import { TiendanubeWebhookService } from './catalog/tiendanube-webhook.js';
 import { ConversationService } from './conversations/conversation.service.js';
 import { HandoffService } from './conversations/handoff.service.js';
 import { ReplyGuard } from './conversations/reply-guard.js';
@@ -27,7 +24,6 @@ export interface ContainerOverrides {
   db?: PrismaClient;
   transport?: WhatsAppTransport;
   llm?: LlmClient | null;
-  tiendanube?: TiendanubeClient | null;
 }
 
 /** Arma todos los servicios. Un solo proceso: Baileys exige una única instancia. */
@@ -50,29 +46,8 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const handoff = new HandoffService(db, bus, audit, settings, sender);
   const conversations = new ConversationService(db, bus, handoff);
 
-  const tiendanube =
-    overrides.tiendanube !== undefined
-      ? overrides.tiendanube
-      : env.TIENDANUBE_STORE_ID && env.TIENDANUBE_ACCESS_TOKEN
-        ? new TiendanubeClient(
-            {
-              storeId: env.TIENDANUBE_STORE_ID,
-              accessToken: env.TIENDANUBE_ACCESS_TOKEN,
-              userAgent: env.TIENDANUBE_USER_AGENT,
-              apiVersion: env.TIENDANUBE_API_VERSION,
-            },
-            logger,
-          )
-        : null;
-  const catalogSync = new CatalogSyncService(db, tiendanube, logger);
-  const catalog = new CatalogService(db);
-  const webhooks = new TiendanubeWebhookService(
-    db,
-    catalogSync,
-    { appSecret: env.TIENDANUBE_APP_SECRET, storeId: env.TIENDANUBE_STORE_ID },
-    logger,
-  );
 
+  const catalog = new CatalogService(db);
   const cart = new CartService(db, bus);
   const leads = new LeadsService(db, bus);
   const followups = new FollowupsService(db, bus, logger);
@@ -119,8 +94,6 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     handoff,
     conversations,
     catalog,
-    catalogSync,
-    webhooks,
     cart,
     leads,
     followups,

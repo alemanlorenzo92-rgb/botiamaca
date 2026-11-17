@@ -14,7 +14,6 @@ import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerEventsRoute } from './routes/events.js';
 import { registerSalesRoutes } from './routes/sales.js';
-import { registerWebhookRoutes } from './routes/webhooks.js';
 
 export interface ServerOptions {
   /** Carpeta del panel exportado (Next.js `out`). */
@@ -66,7 +65,6 @@ export async function buildServer(c: Container, options: ServerOptions = {}): Pr
     return { ok: true, whatsapp: c.gateway?.getStatus().status ?? 'DISABLED' };
   });
 
-  await app.register(registerWebhookRoutes(c));
   await app.register(
     async (api) => {
       await api.register(registerAuthRoutes(c));

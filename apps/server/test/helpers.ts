@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import type { Response, ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses';
 import type { LlmClient } from '../src/ai/orchestrator.js';
-import { TiendanubeClient } from '../src/catalog/tiendanube.client.js';
 import { seed } from '../src/cli.js';
 import { createContainer } from '../src/container.js';
 import { loadEnv } from '../src/core/env.js';
@@ -92,36 +91,19 @@ export function toolCalls(...calls: [string, Record<string, unknown>][]): Respon
   } as unknown as Response;
 }
 
-export type FetchRoute = (url: string) => { status: number; body?: unknown } | undefined;
-
-export function createTestContainer(opts: { routes?: FetchRoute } = {}) {
+export function createTestContainer() {
   const env = loadEnv({
     NODE_ENV: 'test',
     DATABASE_URL: TEST_DATABASE_URL,
     ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
     WHATSAPP_ENABLED: 'false',
-    TIENDANUBE_STORE_ID: '999',
-    TIENDANUBE_ACCESS_TOKEN: 'token',
-    TIENDANUBE_APP_SECRET: APP_SECRET,
     OPENAI_TIMEOUT_MS: '2000',
   });
   const logger = createLogger('silent');
-  const fetchCalls: string[] = [];
-  const fakeFetch = (async (input: string | URL | Request) => {
-    const url = String(input);
-    fetchCalls.push(url);
-    const res = opts.routes?.(url) ?? { status: 404, body: { code: 404 } };
-    return new Response(JSON.stringify(res.body ?? {}), { status: res.status, headers: { 'content-type': 'application/json' } });
-  }) as typeof fetch;
   const transport = new FakeTransport();
   const llm = new FakeLlm();
-  const tiendanube = new TiendanubeClient(
-    { storeId: '999', accessToken: 'token', userAgent: 'test', apiVersion: '2025-03' },
-    logger,
-    fakeFetch,
-  );
-  const c = createContainer(env, logger, { db, transport, llm, tiendanube });
-  return { c, transport, llm, fetchCalls };
+  const c = createContainer(env, logger, { db, transport, llm });
+  return { c, transport, llm };
 }
 
 export type TestContainer = ReturnType<typeof createTestContainer>['c'];
@@ -163,14 +145,14 @@ export async function seedProduct(p: {
   name: string;
   variants: { values: string[]; retail?: number | null; wholesale?: number | null; stock?: number | null; managed?: boolean }[];
 }) {
-  const retail = await db.priceList.upsert({ where: { code: 'retail' }, create: { code: 'retail', name: 'Minorista', source: 'tiendanube' }, update: {} });
+  const retail = await db.priceList.upsert({ where: { code: 'retail' }, create: { code: 'retail', name: 'Minorista', source: 'manual' }, update: {} });
   const wholesale = await db.priceList.upsert({ where: { code: 'wholesale' }, create: { code: 'wholesale', name: 'Mayorista', source: 'manual' }, update: {} });
   const product = await db.product.create({
-    data: { externalId: randomUUID(), name: p.name, published: true, searchText: p.name.toLowerCase(), url: `https://tienda.test/${encodeURIComponent(p.name)}` },
+    data: { name: p.name, published: true, searchText: p.name.toLowerCase(), url: `https://tienda.test/${encodeURIComponent(p.name)}` },
   });
   const variants = [];
   for (const v of p.variants) {
-    const variant = await db.productVariant.create({ data: { externalId: randomUUID(), productId: product.id, values: v.values } });
+    const variant = await db.productVariant.create({ data: { productId: product.id, values: v.values } });
     if (v.retail != null) await db.variantPrice.create({ data: { variantId: variant.id, priceListId: retail.id, amount: v.retail } });
     if (v.wholesale != null) await db.variantPrice.create({ data: { variantId: variant.id, priceListId: wholesale.id, amount: v.wholesale } });
     await db.inventory.create({ data: { variantId: variant.id, managed: v.managed ?? true, quantity: v.stock ?? 0 } });

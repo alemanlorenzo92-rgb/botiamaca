@@ -27,14 +27,6 @@ async function start() {
 
   c.followups.startScheduler();
 
-  if (c.catalogSync.isConfigured()) {
-    const sync = () => void c.catalogSync.syncAll().catch((err: unknown) => logger.error({ err }, 'sincronización de catálogo falló'));
-    sync();
-    timers.push(setInterval(sync, env.CATALOG_SYNC_INTERVAL_MINUTES * 60_000));
-    void c.webhooks.processPending().catch((err: unknown) => logger.error({ err }, 'reproceso de webhooks falló'));
-  } else {
-    logger.warn('Tiendanube sin configurar: el catálogo queda vacío y la IA deriva consultas de productos');
-  }
   timers.push(
     setInterval(() => void c.db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {}), 60 * 60_000),
   );

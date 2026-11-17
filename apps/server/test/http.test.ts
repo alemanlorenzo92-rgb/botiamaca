@@ -69,13 +69,4 @@ describe('API del panel', () => {
     expect((await db.conversation.findUniqueOrThrow({ where: { id: conv.id } })).status).toBe('HUMAN_ACTIVE');
   });
 
-  it('webhook de Tiendanube rechaza firmas inválidas', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/webhooks/tiendanube',
-      headers: { 'content-type': 'application/json', 'x-linkedstore-hmac-sha256': 'abc' },
-      payload: JSON.stringify({ store_id: 999, event: 'product/updated', id: 1 }),
-    });
-    expect(res.statusCode).toBe(401);
-  });
 });

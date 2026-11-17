@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 // ---------- Usuarios y acceso ----------
@@ -172,6 +174,8 @@ model Message {
   type           MessageType      @default(TEXT)
   text           String?
   mediaMime      String?          @map("media_mime")
+  mediaId        String?          @map("media_id") @db.Uuid
+  media          MediaAsset?      @relation(fields: [mediaId], references: [id], onDelete: SetNull)
   status         MessageStatus
   sentByUserId   String?          @map("sent_by_user_id") @db.Uuid
   sentByUser     User?            @relation(fields: [sentByUserId], references: [id], onDelete: SetNull)
@@ -243,23 +247,34 @@ model AiRun {
 // ---------- Catálogo ----------
 
 model Category {
-  id         String            @id @default(uuid()) @db.Uuid
-  externalId String            @unique @map("external_id")
-  name       String
-  handle     String?
-  parentId   String?           @map("parent_external_id")
-  visible    Boolean           @default(true)
-  syncedAt   DateTime          @default(now()) @map("synced_at")
-  products   ProductCategory[]
+  id          String            @id @default(uuid()) @db.Uuid
+  externalId  String?           @unique @map("external_id")
+  name        String
+  description String?
+  media       MediaAsset[]
+  tutorials   Tutorial[]
+  handle      String?
+  parentId    String?           @map("parent_external_id")
+  visible     Boolean           @default(true)
+  syncedAt    DateTime          @default(now()) @map("synced_at")
+  products    ProductCategory[]
 
   @@map("categories")
 }
 
 model Product {
   id              String            @id @default(uuid()) @db.Uuid
-  externalId      String            @unique @map("external_id")
+  externalId      String?           @unique @map("external_id")
   name            String
   description     String?
+  /// Características, usos y recomendaciones cargadas por la dueña
+  features        String?
+  usage           String?
+  recommendations String?
+  /// [{ "q": "...", "a": "..." }]
+  faqs            Json              @default("[]")
+  media           MediaAsset[]
+  tutorials       Tutorial[]
   handle          String?
   url             String?
   brand           String?
@@ -291,7 +306,7 @@ model ProductCategory {
 
 model ProductVariant {
   id         String         @id @default(uuid()) @db.Uuid
-  externalId String         @unique @map("external_id")
+  externalId String?        @unique @map("external_id")
   productId  String         @map("product_id") @db.Uuid
   product    Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
   sku        String?
@@ -563,33 +578,6 @@ model IntegrationSetting {
   @@map("integration_settings")
 }
 
-model SyncRun {
-  id         String    @id @default(uuid()) @db.Uuid
-  provider   String
-  kind       String
-  status     String
-  stats      Json      @default("{}")
-  error      String?
-  startedAt  DateTime  @default(now()) @map("started_at")
-  finishedAt DateTime? @map("finished_at")
-
-  @@index([provider, startedAt])
-  @@map("sync_runs")
-}
-
-model WebhookEvent {
-  id          String    @id @default(uuid()) @db.Uuid
-  provider    String
-  dedupeKey   String    @unique @map("dedupe_key")
-  event       String
-  payload     Json
-  receivedAt  DateTime  @default(now()) @map("received_at")
-  processedAt DateTime? @map("processed_at")
-  error       String?
-
-  @@map("webhook_events")
-}
-
 model AuditLog {
   id         String    @id @default(uuid()) @db.Uuid
   actorType  ActorType @map("actor_type")
@@ -627,4 +615,253 @@ model WaState {
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   @@map("wa_state")
+}
+
+model ServiceInfo {
+  service     EventService @id
+  name        String
+  description String       @default("")
+  /// Condiciones comerciales (señas, traslados, mínimos...). Vacío = no cargado
+  conditions  String       @default("")
+  /// [{ "q": "...", "a": "..." }]
+  faqs        Json         @default("[]")
+  /// Datos extra libres (zonas, duración, medidas disponibles...)
+  info        Json         @default("{}")
+  active      Boolean      @default(true)
+  media       MediaAsset[]
+  tutorials   Tutorial[]
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@map("services")
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+}
+
+enum MediaSource {
+  UPLOAD
+  IMPORT
+}
+
+model MediaAsset {
+  id             String        @id @default(uuid()) @db.Uuid
+  /// sha256 del archivo: evita duplicados
+  sha256         String        @unique
+  kind           MediaKind
+  mime           String
+  sizeBytes      Int           @map("size_bytes")
+  storageKey     String        @unique @map("storage_key")
+  originalName   String?       @map("original_name")
+  title          String        @default("")
+  description    String        @default("")
+  tags           String[]
+  isTutorial     Boolean       @default(false) @map("is_tutorial")
+  active         Boolean       @default(true)
+  source         MediaSource   @default(UPLOAD)
+  productId      String?       @map("product_id") @db.Uuid
+  product        Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  categoryId     String?       @map("category_id") @db.Uuid
+  category       Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  service        EventService?
+  serviceInfo    ServiceInfo?  @relation(fields: [service], references: [service], onDelete: SetNull)
+  importedChatId String?       @map("imported_chat_id") @db.Uuid
+  importedChat   ImportedChat? @relation(fields: [importedChatId], references: [id], onDelete: SetNull)
+  searchText     String        @default("") @map("search_text")
+  tutorials      Tutorial[]
+  messages       Message[]
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@index([active, kind])
+  @@map("media_assets")
+}
+
+model Tutorial {
+  id          String        @id @default(uuid()) @db.Uuid
+  title       String
+  content     String        @default("")
+  productId   String?       @map("product_id") @db.Uuid
+  product     Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  categoryId  String?       @map("category_id") @db.Uuid
+  category    Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  service     EventService?
+  serviceInfo ServiceInfo?  @relation(fields: [service], references: [service], onDelete: SetNull)
+  media       MediaAsset[]
+  active      Boolean       @default(true)
+  searchText  String        @default("") @map("search_text")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@map("tutorials")
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model ImportedChat {
+  id           String            @id @default(uuid()) @db.Uuid
+  fileName     String            @map("file_name")
+  /// sha256 del archivo de texto: el mismo export no se importa dos veces
+  sha256       String            @unique
+  ownerName    String            @map("owner_name")
+  participants String[]
+  messageCount Int               @default(0) @map("message_count")
+  mediaCount   Int               @default(0) @map("media_count")
+  /// La dueña confirmó que puede usar este chat para aprender
+  consent      Boolean           @default(false)
+  /// Permite reutilizar los medios del chat en la biblioteca
+  mediaConsent Boolean           @default(false) @map("media_consent")
+  status       ImportStatus      @default(PENDING)
+  error        String?
+  importedById String?           @map("imported_by_id") @db.Uuid
+  createdAt    DateTime          @default(now()) @map("created_at")
+  processedAt  DateTime?         @map("processed_at")
+  messages     ImportedMessage[]
+  sources      KnowledgeSource[]
+  chunks       KnowledgeChunk[]
+  media        MediaAsset[]
+
+  @@map("imported_chats")
+}
+
+model ImportedMessage {
+  id        String       @id @default(uuid()) @db.Uuid
+  chatId    String       @map("chat_id") @db.Uuid
+  chat      ImportedChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  position  Int
+  sentAt    DateTime     @map("sent_at")
+  /// Alias del participante ("Dueña" o "Cliente 1"): no se guardan nombres ni teléfonos
+  author    String
+  fromOwner Boolean      @map("from_owner")
+  /// Texto anonimizado
+  text      String
+  mediaFile String?      @map("media_file")
+  /// hash(fecha + autor + texto): evita duplicados entre exports solapados
+  dedupeKey String       @unique @map("dedupe_key")
+
+  @@index([chatId, position])
+  @@map("imported_messages")
+}
+
+enum KnowledgeKind {
+  STYLE
+  FAQ
+  PRODUCT
+  SERVICE
+  POLICY
+  OBJECTION
+  SALES_PROCESS
+  OTHER
+}
+
+enum KnowledgeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISABLED
+  CONFLICT
+}
+
+model KnowledgeDocument {
+  id             String              @id @default(uuid()) @db.Uuid
+  kind           KnowledgeKind
+  title          String
+  content        String
+  status         KnowledgeStatus     @default(PENDING)
+  /// 0..1 según qué tan repetido y claro aparece en los chats
+  confidence     Float               @default(0.5)
+  /// Dato que puede vencer (precios, promos, fechas)
+  temporal       Boolean             @default(false)
+  version        Int                 @default(1)
+  conflictWithId String?             @map("conflict_with_id") @db.Uuid
+  conflictWith   KnowledgeDocument?  @relation("KnowledgeConflict", fields: [conflictWithId], references: [id], onDelete: SetNull)
+  conflicts      KnowledgeDocument[] @relation("KnowledgeConflict")
+  conflictNote   String?             @map("conflict_note")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  sources        KnowledgeSource[]
+  chunks         KnowledgeChunk[]
+  reviews        KnowledgeReview[]
+
+  @@index([status, kind])
+  @@map("knowledge_documents")
+}
+
+model KnowledgeSource {
+  id         String            @id @default(uuid()) @db.Uuid
+  documentId String            @map("document_id") @db.Uuid
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chatId     String?           @map("chat_id") @db.Uuid
+  chat       ImportedChat?     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  excerpt    String            @default("")
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  @@index([documentId])
+  @@map("knowledge_sources")
+}
+
+enum ChunkKind {
+  DOCUMENT
+  EXAMPLE
+}
+
+model KnowledgeChunk {
+  id         String                       @id @default(uuid()) @db.Uuid
+  kind       ChunkKind
+  documentId String?                      @map("document_id") @db.Uuid
+  document   KnowledgeDocument?           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chatId     String?                      @map("chat_id") @db.Uuid
+  chat       ImportedChat?                @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  /// Texto recuperable (conocimiento o intercambio cliente → dueña anonimizado)
+  text       String
+  embedding  Unsupported("vector(1536)")?
+  active     Boolean                      @default(true)
+  createdAt  DateTime                     @default(now()) @map("created_at")
+
+  @@index([kind, active])
+  @@map("knowledge_chunks")
+}
+
+model KnowledgeReview {
+  id         String            @id @default(uuid()) @db.Uuid
+  documentId String            @map("document_id") @db.Uuid
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  action     String
+  userId     String?           @map("user_id") @db.Uuid
+  note       String?
+  before     Json?
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  @@index([documentId])
+  @@map("knowledge_reviews")
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+/// Cola simple en Postgres para procesos largos (extracción de conocimiento, embeddings)
+model Job {
+  id        String    @id @default(uuid()) @db.Uuid
+  type      String
+  payload   Json      @default("{}")
+  status    JobStatus @default(PENDING)
+  attempts  Int       @default(0)
+  error     String?
+  runAt     DateTime  @default(now()) @map("run_at")
+  startedAt DateTime? @map("started_at")
+  doneAt    DateTime? @map("done_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([status, runAt])
+  @@map("jobs")
 }

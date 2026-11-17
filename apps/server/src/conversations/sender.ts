@@ -114,6 +114,10 @@ export class MessageSender {
     const payload = { kind: loaded.asset.kind, data: loaded.data, mimetype: loaded.asset.mime, caption: params.caption ?? null };
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0 && params.author === 'AI') {
+        const current = await this.db.conversation.findUniqueOrThrow({ where: { id: conversation.id }, select: { status: true } });
+        if (current.status !== 'AI_ACTIVE') return fail(`No se reintenta: conversación en estado ${current.status}`);
+      }
       try {
         const { externalId } = await this.transport.sendMedia(conversation.contact.waJid, payload);
         const saved = await this.db.message.update({ where: { id: message.id }, data: { status: 'SENT', externalId } });

@@ -27,8 +27,8 @@ export default function LoginPage() {
       <form className="card login" onSubmit={submit}>
         <h1>Ingresar al panel</h1>
         <label>
-          Email
-          <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          Usuario o email
+          <input type="text" autoCapitalize="none" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
         <label>
           Contraseña

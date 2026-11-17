@@ -155,7 +155,8 @@ export function registerAdminRoutes(c: Container) {
       users.post('/users', { preHandler: requirePermission('users') }, async (request) => {
         const body = parse(
           z.object({
-            email: z.string().email(),
+            // Email o un nombre de usuario simple (p. ej. "malestyle").
+            email: z.union([z.string().email().max(200), z.string().regex(/^[a-z0-9._-]{3,40}$/i, 'Usuario: letras, números, punto, guion o guion bajo (3 a 40)')]),
             name: z.string().trim().min(1).max(120),
             password: z.string().min(10).max(200),
             roleCode: z.string().min(1),

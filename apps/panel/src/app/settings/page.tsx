@@ -266,7 +266,7 @@ function Users() {
       <div className="card stack" style={{ maxWidth: 520 }}>
         <h2>Nuevo usuario</h2>
         <input placeholder="Nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        <input placeholder="Usuario o email" type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <input
           placeholder="Contraseña (mín. 10 caracteres)"
           type="password"

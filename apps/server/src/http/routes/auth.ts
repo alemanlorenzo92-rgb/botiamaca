@@ -11,7 +11,7 @@ export function registerAuthRoutes(c: Container) {
       '/auth/login',
       { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
       async (request, reply) => {
-        const body = parse(z.object({ email: z.string().email(), password: z.string().min(1).max(200) }), request.body);
+        const body = parse(z.object({ email: z.string().trim().min(1).max(200), password: z.string().min(1).max(200) }), request.body);
         const result = await c.auth.login(body.email, body.password, {
           ip: request.ip,
           userAgent: request.headers['user-agent'] ?? null,

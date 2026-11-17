@@ -37,4 +37,17 @@ describe('parser de chats exportados', () => {
     const out = anonymize('Soy Juana, mi cel +54 9 351 555-1234, mail juana@mail.com, DNI 30.123.456, CBU 0000003100012345678901, alias juana.mp', names);
     expect(out).toBe('Soy Cliente 1, mi cel [teléfono], mail [email], DNI [documento], CBU [cbu], alias [alias]');
   });
+
+  it('anonimiza direcciones y nombres de terceros sin perder el contexto comercial', () => {
+    const cases: [string, string][] = [
+      ['Mandalo a Av. Colón 1234 piso 3 B, barrio General Paz, CP 5000', 'Mandalo a [dirección] [dirección], barrio [barrio], CP [código postal]'],
+      ['Mi dirección es San Martín y Belgrano 450, Córdoba', 'Mi dirección es [dirección], Córdoba'],
+      ['Hola Marta! Es para mi hija Sofía, lo retira de parte de Laura Gómez', 'Hola [nombre]! Es para mi hija [nombre], lo retira de parte de [nombre]'],
+      ['Gracias Ana Te paso el comprobante', 'Gracias [nombre] Te paso el comprobante'],
+      ['Seguime en @juani.ok', 'Seguime en [usuario]'],
+      ['Hola Cliente 1! Buenas tardes, el Glitter Bar para 50 personas el sábado está disponible', 'Hola Cliente 1! Buenas tardes, el Glitter Bar para 50 personas el sábado está disponible'],
+      ['Hola Buenas! Retiro en el local o envío por correo, mínimo 10 unidades', 'Hola Buenas! Retiro en el local o envío por correo, mínimo 10 unidades'],
+    ];
+    for (const [input, expected] of cases) expect(anonymize(input)).toBe(expected);
+  });
 });

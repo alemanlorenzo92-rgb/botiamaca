@@ -145,10 +145,11 @@ export class CatalogAdminService {
   }
 
   private async refreshSearch(id: string) {
-    const p = await this.db.product.findUniqueOrThrow({ where: { id }, include: { categories: { include: { category: true } } } });
+    const p = await this.db.product.findUniqueOrThrow({ where: { id }, include: { categories: { include: { category: true } }, variants: { where: { deletedAt: null }, select: { values: true } } },
+    });
     const faqs = Array.isArray(p.faqs) ? (p.faqs as unknown as Faq[]).map((f) => `${f.q} ${f.a}`).join(' ') : '';
     const searchText = normalize(
-      [p.name, p.brand, p.description, p.features, p.usage, p.recommendations, faqs, p.tags.join(' '), p.categories.map((c) => c.category.name).join(' ')]
+      [p.name, p.brand, p.description, p.features, p.usage, p.recommendations, faqs, p.tags.join(' '), p.categories.map((c) => c.category.name).join(' '), p.variants.flatMap((v) => v.values).join(' ')]
         .filter(Boolean)
         .join(' '),
     );

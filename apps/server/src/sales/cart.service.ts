@@ -78,6 +78,27 @@ export class CartService {
     return this.view(contactId);
   }
 
+  /** Cambia el carrito abierto a mayorista/minorista y recalcula los precios de referencia. */
+  async setWholesale(contactId: string, wholesale: boolean) {
+    const cart = await this.db.cart.findFirst({
+      where: { contactId, status: 'OPEN' },
+      orderBy: { createdAt: 'desc' },
+      include: { items: { include: { variant: { include: { prices: { where: { validTo: null }, include: { priceList: true } } } } } } },
+    });
+    if (!cart || cart.wholesale === wholesale) return;
+    const listCode = wholesale ? WHOLESALE_PRICE_LIST : RETAIL_PRICE_LIST;
+    await this.db.$transaction([
+      this.db.cart.update({ where: { id: cart.id }, data: { wholesale } }),
+      ...cart.items.map((i) => {
+        const price = i.variant.prices.find((p) => p.priceList.code === listCode);
+        return this.db.cartItem.update({
+          where: { id: i.id },
+          data: { unitPrice: price?.amount ?? null, priceListCode: price ? listCode : null },
+        });
+      }),
+    ]);
+  }
+
   /** Convierte el carrito en un pedido a revisar por una persona (no cobra ni confirma). */
   async submit(contactId: string, shippingNotes: string | null, notes: string | null) {
     const cart = await this.db.cart.findFirst({
@@ -107,7 +128,7 @@ export class CartService {
           },
         },
       });
-      await tx.cart.update({ where: { id: cart.id }, data: { status: 'SUBMITTED' } });
+      await tx.cart.update({ where: { id: cart.id }, data: { status: 'CONVERTED' } });
       return created;
     });
     if (cart.conversationId) this.bus.publish({ type: 'conversation.updated', conversationId: cart.conversationId });

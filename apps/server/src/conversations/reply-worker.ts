@@ -71,6 +71,8 @@ export class ReplyWorker {
   }
 
   async process(conversationId: string): Promise<void> {
+    // Sin WhatsApp no se marca nada: los mensajes quedan pendientes y se retoman al reconectar.
+    if (!this.sender.isReady()) return;
     const pending = await this.pendingIds(conversationId);
     if (!pending.length) return;
 
@@ -90,8 +92,7 @@ export class ReplyWorker {
       const ai = await this.settings.getAi();
       const after = await this.guard.check(conversationId);
       if (after.allowed) {
-        await this.sender.sendText({ conversationId, text: ai.errorMessage, author: 'SYSTEM' });
-        await this.handoff.requestHuman(conversationId, { type: 'SYSTEM' }, 'La IA no pudo responder');
+        await this.handoff.requestHuman(conversationId, { type: 'SYSTEM' }, 'La IA no pudo responder', ai.errorMessage);
       }
       return;
     }

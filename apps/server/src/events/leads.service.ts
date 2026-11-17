@@ -1,4 +1,4 @@
-import type { EventLead, EventService, PrismaClient } from '@prisma/client';
+import type { EventLead, EventLeadStatus, EventService, PrismaClient } from '@prisma/client';
 import type { EventBus } from '../core/events.js';
 
 export interface LeadFields {
@@ -73,15 +73,15 @@ export class LeadsService {
   /** Crea o completa el lead abierto del cliente para ese servicio. */
   async upsert(contactId: string, conversationId: string | null, service: EventService, fields: LeadFields) {
     const open = await this.db.eventLead.findFirst({
-      where: { contactId, service, status: { in: ['NEW', 'QUALIFYING', 'READY_TO_QUOTE'] } },
+      where: { contactId, service, status: { in: ['NEW', 'QUOTING'] } },
       orderBy: { createdAt: 'desc' },
     });
     const data = this.toData(fields);
     let lead = open
       ? await this.db.eventLead.update({ where: { id: open.id }, data })
-      : await this.db.eventLead.create({ data: { ...data, contactId, conversationId, service, status: 'QUALIFYING' } });
+      : await this.db.eventLead.create({ data: { ...data, contactId, conversationId, service, status: 'NEW' } });
     const missing = this.missingFields(lead);
-    const status = missing.length ? 'QUALIFYING' : 'READY_TO_QUOTE';
+    const status: EventLeadStatus = missing.length ? 'NEW' : 'QUOTING';
     if (lead.status !== status) lead = await this.db.eventLead.update({ where: { id: lead.id }, data: { status } });
     if (conversationId) this.bus.publish({ type: 'conversation.updated', conversationId });
     return { lead_id: lead.id, service, status: lead.status, missing_fields: missing };

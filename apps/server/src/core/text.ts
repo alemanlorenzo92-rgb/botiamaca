@@ -10,7 +10,7 @@ export function normalize(text: string): string {
 
 export function searchKey(text: string): string {
   return normalize(text)
-    .replace(/(\d+)\s*(?:m|mt|mts|metro|metros)?\s*(?:x|por)\s*(\d+)\s*(?:m|mt|mts|metro|metros)?\b/g, '$1x$2')
+    .replace(/\b(\d+)(?:\s*(?:m|mt|mts|metro|metros)\b)?\s*(?:x|por)\s*(\d+)(?:\s*(?:m|mt|mts|metro|metros)\b)?/g, '$1x$2')
     .replace(/([a-zñ])\1+/g, '$1')
     .trim();
 }

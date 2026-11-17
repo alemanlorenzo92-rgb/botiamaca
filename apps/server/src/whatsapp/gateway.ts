@@ -19,6 +19,8 @@ export type WhatsAppStatus = 'DISABLED' | 'DISCONNECTED' | 'CONNECTING' | 'QR' |
 
 const MAX_BACKOFF_MS = 60_000;
 const APPEND_MAX_AGE_MS = 10 * 60 * 1000;
+/** WhatsApp manda el historial en varias tandas: se junta todo y se procesa cuando dejan de llegar. */
+const HISTORY_QUIET_MS = 30_000;
 
 /** Tras reconectar, Baileys reenvía historial ("append"): solo se procesa lo reciente. */
 export function shouldHandleUpsert(type: string, timestamp: Date, now = Date.now()): boolean {
@@ -35,6 +37,9 @@ export class WhatsAppGateway implements WhatsAppTransport {
   private attempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private stopping = false;
+  private historyBuffer: InboundWhatsAppMessage[] = [];
+  private historyTimer: NodeJS.Timeout | null = null;
+  private historyOwner: string | null = null;
 
   constructor(
     private readonly db: PrismaClient,
@@ -43,6 +48,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
     private readonly logger: Logger,
     private readonly onMessage: (msg: InboundWhatsAppMessage) => Promise<void>,
     private readonly onConnected: () => void = () => {},
+    private readonly onHistory: (messages: InboundWhatsAppMessage[], ownerName: string | null) => Promise<unknown> = async () => {},
   ) {}
 
   getStatus() {
@@ -90,6 +96,9 @@ export class WhatsAppGateway implements WhatsAppTransport {
       version = undefined;
     }
 
+    // El nombre de la cuenta es por vinculación: lo pendiente se procesa con el de la sesión anterior y después se reinicia.
+    void this.flushHistory();
+    this.historyOwner = null;
     const sock = makeWASocket({
       ...(version ? { version } : {}),
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, waLogger) },
@@ -137,6 +146,17 @@ export class WhatsAppGateway implements WhatsAppTransport {
       })().catch((error: unknown) => this.logger.error({ err: error }, 'error en connection.update'));
     });
 
+    // Historial que WhatsApp manda al vincular: no se responde, solo se usa para aprender.
+    sock.ev.on('messaging-history.set', ({ messages }) => {
+      this.historyOwner = sock.user?.name ?? this.historyOwner;
+      for (const raw of messages) {
+        const mapped = mapWAMessage(raw);
+        if (mapped) this.historyBuffer.push(mapped);
+      }
+      if (this.historyTimer) clearTimeout(this.historyTimer);
+      this.historyTimer = setTimeout(() => this.flushHistory(), HISTORY_QUIET_MS);
+    });
+
     sock.ev.on('messages.upsert', ({ messages, type }) => {
       void (async () => {
         for (const raw of messages) {
@@ -151,6 +171,15 @@ export class WhatsAppGateway implements WhatsAppTransport {
         }
       })();
     });
+  }
+
+  private flushHistory(): Promise<unknown> {
+    if (this.historyTimer) clearTimeout(this.historyTimer);
+    this.historyTimer = null;
+    const batch = this.historyBuffer;
+    this.historyBuffer = [];
+    if (!batch.length) return Promise.resolve();
+    return this.onHistory(batch, this.historyOwner).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
   }
 
   private scheduleReconnect(delayMs: number) {
@@ -198,6 +227,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
   }
 
   async stop(): Promise<void> {
+    await this.flushHistory();
     this.stopping = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.sock?.end(undefined);

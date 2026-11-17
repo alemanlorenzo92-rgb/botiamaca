@@ -6,9 +6,13 @@ import type { Logger } from '../core/logger.js';
 import { MediaError, type MediaService } from '../media/media.service.js';
 import { anonymize } from './anonymize.js';
 import type { JobRunner } from './jobs.js';
+import type { InboundWhatsAppMessage } from '../whatsapp/transport.js';
 import { parseWhatsAppExport, type ParsedChat } from './whatsapp-parser.js';
 
 export const OWNER_ALIAS = 'Dueña';
+/** Del historial que manda WhatsApp al vincular, se aprende de los últimos mensajes de cada chat. */
+const HISTORY_MAX_MESSAGES = 200;
+const HISTORY_MIN_MESSAGES = 4;
 
 export class ImportError extends Error {
   constructor(
@@ -122,6 +126,64 @@ export class ChatImportService {
       await this.remove(chat.id).catch((e: unknown) => this.logger.error({ err: e, chatId: chat.id }, 'no se pudo limpiar la importación fallida'));
       throw error;
     }
+  }
+
+  /**
+   * Aprende del historial que WhatsApp manda al vincular el número (sin responderle a nadie): chats de a dos con
+   * mensajes de la dueña y de la clienta. Se anonimiza igual que un export y el conocimiento queda pendiente de revisión.
+   */
+  async importHistory(messages: InboundWhatsAppMessage[], ownerName: string | null = null) {
+    const byChat = new Map<string, InboundWhatsAppMessage[]>();
+    for (const m of messages) {
+      if (m.type !== 'TEXT' || !m.text?.trim()) continue;
+      // El mismo chat puede llegar como número o como LID: se agrupa por el número cuando WhatsApp lo informa.
+      const key = m.chatJid.endsWith('@lid') && m.altJid?.endsWith('@s.whatsapp.net') ? m.altJid : m.chatJid;
+      const list = byChat.get(key) ?? [];
+      list.push(m);
+      byChat.set(key, list);
+    }
+    let imported = 0;
+    for (const [jid, all] of byChat) {
+      const list = [...all].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()).slice(-HISTORY_MAX_MESSAGES);
+      if (list.length < HISTORY_MIN_MESSAGES || !list.some((m) => m.fromMe) || !list.some((m) => !m.fromMe)) continue;
+      const ids = [...new Set(all.flatMap((m) => [m.chatJid, m.altJid]).filter((x): x is string => !!x))];
+      const muted = await this.db.contact.findFirst({ where: { OR: [{ waJid: { in: ids } }, { waAltJid: { in: ids } }], botMuted: true }, select: { id: true } });
+      if (muted) continue;
+      const hash = sha256(`history|${jid}|${list.at(-1)!.externalId}`);
+      if (await this.db.importedChat.findUnique({ where: { sha256: hash } })) continue;
+      // Etiquetas internas (sin espacios, no aparecen en el texto); el número de la clienta no se guarda.
+      const owner = 'historial:duena';
+      const customer = `historial:${sha256(jid).slice(0, 16)}`;
+      const aliases = new Map([[owner, OWNER_ALIAS], [customer, 'Cliente 1']]);
+      const pushName = list.find((m) => !m.fromMe && m.pushName)?.pushName;
+      if (pushName) aliases.set(pushName, 'Cliente 1');
+      if (ownerName) aliases.set(ownerName, OWNER_ALIAS);
+      const parsed: ParsedChat = {
+        participants: [owner, customer],
+        skippedLines: 0,
+        messages: list.map((m) => ({ sentAt: m.timestamp, author: m.fromMe ? owner : customer, text: m.text!, mediaFile: null, mediaOmitted: false })),
+      };
+      const chat = await this.db.importedChat.create({
+        data: {
+          fileName: `Historial de WhatsApp del ${list[0]!.timestamp.toISOString().slice(0, 10).split('-').reverse().join('/')} (${list.length} mensajes)`,
+          sha256: hash,
+          ownerName: OWNER_ALIAS,
+          participants: [OWNER_ALIAS, 'Cliente 1'],
+          consent: true,
+          mediaConsent: false,
+          status: 'PENDING',
+        },
+      });
+      try {
+        await this.store(chat.id, parsed, owner, aliases, new Map(), false);
+        imported++;
+      } catch (error) {
+        await this.remove(chat.id).catch((e: unknown) => this.logger.error({ err: e, chatId: chat.id }, 'no se pudo limpiar la importación fallida'));
+        this.logger.error({ err: error }, 'no se pudo aprender de un chat del historial');
+      }
+    }
+    if (imported) this.logger.info({ imported }, 'historial de WhatsApp importado para aprender');
+    return { imported };
   }
 
   private async store(

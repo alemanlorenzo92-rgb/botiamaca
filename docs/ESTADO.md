@@ -101,6 +101,13 @@ Eventos, Seguimientos, Configuración, WhatsApp y Auditoría. En celular el men�
 - Mensajes entrantes repetidos se descartan por `externalId`; reconexión de WhatsApp con espera creciente; respuestas
   pendientes se retoman al reconectar.
 
+## Aprender del historial al vincular WhatsApp
+
+Al vincular un número, WhatsApp le manda al dispositivo nuevo el historial reciente. El bot no le responde a nadie de
+ese historial: toma los chats de a dos con al menos 4 mensajes de texto en los que respondió la dueña (hasta 200
+mensajes por chat, sin contactos silenciados), los anonimiza igual que un export y los manda a extraer conocimiento.
+El conocimiento queda pendiente hasta que la dueña lo aprueba. Volver a vincular no duplica mensajes.
+
 ## Verificado con OpenAI real
 
 `smoke:openai` pasó 10/10 con una API key real, sobre una base de prueba: importar y anonimizar un chat, extraer

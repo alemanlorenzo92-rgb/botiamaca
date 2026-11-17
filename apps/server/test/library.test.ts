@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { runTool, type ToolContext, type ToolDeps } from '../src/ai/tools.js';
+import { seed } from '../src/cli.js';
+import { searchKey } from '../src/core/text.js';
 import { MediaError, MediaService } from '../src/media/media.service.js';
 import { createTestContainer, customerSays, db, inbound, MemoryStorage, resetDb, textReply, toolCalls, type TestContainer } from './helpers.js';
 
@@ -9,6 +11,23 @@ afterAll(() => db.$disconnect());
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const png = (n = 0) => Buffer.concat([PNG, Buffer.from(`extra-${n}`)]);
 const MP4 = Buffer.concat([Buffer.from('000000186674797069736f6d0000020069736f6d6d703431', 'hex'), Buffer.alloc(64)]);
+
+describe('claves de búsqueda', () => {
+  it('normaliza medidas y letras repetidas', () => {
+    expect(searchKey('3 mts x 3 mts')).toBe('3x3');
+    expect(searchKey('2 por 3 metros')).toBe('2x3');
+    expect(searchKey('Shimmer')).toBe('shimer');
+  });
+
+  it('actualiza los índices viejos de productos al correr el seed', async () => {
+    const product = await db.product.create({ data: { name: 'Shimmer 3x3', searchText: 'shimmer 3x3' } });
+
+    await seed(db);
+    await seed(db);
+
+    await expect(db.product.findUniqueOrThrow({ where: { id: product.id } })).resolves.toMatchObject({ searchText: 'shimer 3x3' });
+  });
+});
 
 function depsOf(c: TestContainer): ToolDeps {
   return {
@@ -119,6 +138,17 @@ describe('biblioteca multimedia', () => {
 });
 
 describe('catálogo propio y servicios', () => {
+  it('busca productos con errores de tipeo y medidas escritas de distintas formas', async () => {
+    const { c } = createTestContainer();
+    await c.catalogAdmin.createProduct({ name: 'Shimmer 3x3' });
+    await c.catalogAdmin.createProduct({ name: 'Glitter holográfico plateado' });
+
+    for (const query of ['shimer wall de 3 mts x 3 mts', 'shimmer 3 x 3', 'pared shimmer 3m x 3m', 'SHIMMER 3X3']) {
+      expect((await c.catalog.search(query)).results.map((p) => p.name)).toContain('Shimmer 3x3');
+    }
+    expect((await c.catalog.search('gliter holografico')).results.map((p) => p.name)).toContain('Glitter holográfico plateado');
+  });
+
   it('precio y stock opcionales: sin dato la IA recibe null y nunca un valor inventado', async () => {
     const { c } = createTestContainer();
     const cat = await c.catalogAdmin.saveCategory({ name: 'Glitter' });

@@ -1,5 +1,5 @@
 import type { BuyerType, Prisma, PrismaClient } from '@prisma/client';
-import { normalize, truncate } from '../core/text.js';
+import { searchKey, truncate } from '../core/text.js';
 
 export const RETAIL_PRICE_LIST = 'retail';
 export const WHOLESALE_PRICE_LIST = 'wholesale';
@@ -35,7 +35,7 @@ export function priceOf(variant: VariantWithData, listCode: string): number | nu
 const STOP_WORDS = new Set(['de', 'la', 'el', 'los', 'las', 'un', 'una', 'para', 'con', 'y', 'o', 'que', 'en', 'del', 'por', 'tenes', 'tienen', 'hay', 'quiero', 'busco', 'precio']);
 
 function tokens(query: string): string[] {
-  return normalize(query)
+  return searchKey(query)
     .split(' ')
     .filter((t) => t.length > 1 && !STOP_WORDS.has(t))
     .map((t) => (t.length > 4 && t.endsWith('es') ? t.slice(0, -2) : t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t));
@@ -80,7 +80,7 @@ export class CatalogService {
 
     const scored = candidates
       .map((p) => {
-        const name = normalize(p.name);
+        const name = searchKey(p.name);
         const score = terms.reduce((acc, t) => acc + (name.includes(t) ? 3 : 0) + (p.searchText.includes(t) ? 1 : 0), 0);
         return { p, score };
       })

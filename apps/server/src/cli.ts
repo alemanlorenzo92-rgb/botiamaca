@@ -15,7 +15,7 @@ export const DEFAULT_AI_SETTINGS = {
   errorMessage: 'Perdón, tuve un problema para responderte. Ya le avisé a la dueña para que te escriba.',
 };
 
-/** Seed idempotente: roles y `ai_settings` id=1. Las claves de negocio quedan sin cargar (= "sin dato"). */
+/** Seed idempotente: roles, configuración, listas de precios e índices de búsqueda. */
 export async function seed(db: PrismaClient) {
   for (const role of DEFAULT_ROLES) {
     await db.role.upsert({
@@ -26,7 +26,9 @@ export async function seed(db: PrismaClient) {
   }
   await db.aiSetting.upsert({ where: { id: 1 }, create: { id: 1, ...DEFAULT_AI_SETTINGS }, update: {} });
   await new ServicesService(db).ensureDefaults();
-  await new CatalogAdminService(db).ensurePriceLists();
+  const catalogAdmin = new CatalogAdminService(db);
+  await catalogAdmin.ensurePriceLists();
+  await catalogAdmin.refreshProductSearchTexts();
 }
 
 function askHidden(question: string): Promise<string> {

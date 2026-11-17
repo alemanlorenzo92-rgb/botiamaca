@@ -106,7 +106,7 @@ export class ReplyWorker {
       return;
     }
 
-    await this.sender.sendText({ conversationId, text: text.trim(), author: 'AI' });
+    await this.sender.sendText({ conversationId, text: humanize(text), author: 'AI' });
 
     if ((await this.pendingIds(conversationId)).length) await this.schedule(conversationId);
   }
@@ -131,4 +131,9 @@ export class ReplyWorker {
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
   }
+}
+
+/** Los modelos usan rayas (—) que nadie escribe en WhatsApp. */
+export function humanize(text: string): string {
+  return text.trim().replace(/\s*—\s*/g, ', ');
 }

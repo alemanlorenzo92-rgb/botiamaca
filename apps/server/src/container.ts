@@ -74,7 +74,10 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const embedder = overrides.embedder ?? (openai ? openAiEmbedder(openai, env.OPENAI_EMBEDDING_MODEL) : localEmbedder);
   const jobs = new JobRunner(db, logger);
   const knowledge = new KnowledgeService(db, llm, embedder, logger, { model: env.OPENAI_MODEL });
-  const chatImport = new ChatImportService(db, media, jobs, logger);
+  const chatImport = new ChatImportService(db, media, jobs, logger, {
+    maxUncompressedBytes: env.IMPORT_MAX_MB * 1024 * 1024,
+    maxFileBytes: Math.max(env.MEDIA_MAX_IMAGE_MB, env.MEDIA_MAX_VIDEO_MB) * 1024 * 1024,
+  });
   jobs.on('knowledge.extract', async (payload) => {
     await knowledge.extractChat((payload as { chatId: string }).chatId);
   });

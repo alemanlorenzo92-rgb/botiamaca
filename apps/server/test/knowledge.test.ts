@@ -55,6 +55,30 @@ describe('importación de chats', () => {
     expect(await db.job.count({ where: { type: 'knowledge.extract' } })).toBe(2);
   });
 
+  it('mismo texto a la misma hora en chats distintos no se pierde; el nombre del export no se guarda', async () => {
+    const { c } = createTestContainer();
+    const other = CHAT_A.replaceAll('Juana Pérez', 'Pedro Gómez').replace('mi cel es 351 555 1234', 'hola');
+    await importText(c, CHAT_A, 'Male Style', 'Chat de WhatsApp con Juana Pérez.txt');
+    const r = await importText(c, other);
+    expect(r).toMatchObject({ duplicate: false, inserted: 4 });
+    const chats = await db.importedChat.findMany();
+    expect(JSON.stringify(chats)).not.toContain('Juana');
+  });
+
+  it('una importación que falla no queda a medias y se puede reintentar', async () => {
+    const { c } = createTestContainer();
+    const zip = new AdmZip();
+    zip.addFile('chat.txt', Buffer.from(CHAT_A));
+    zip.addFile('IMG-20261110-WA0001.jpg', PNG);
+    const upload = c.media.upload.bind(c.media);
+    c.media.upload = () => Promise.reject(new Error('disco lleno'));
+    const params = { data: zip.toBuffer(), fileName: 'chat.zip', ownerName: 'Male Style', consent: true, mediaConsent: true };
+    await expect(c.chatImport.import(params)).rejects.toThrow('disco lleno');
+    expect(await db.importedChat.count()).toBe(0);
+    c.media.upload = upload;
+    expect(await c.chatImport.import(params)).toMatchObject({ duplicate: false, inserted: 4, mediaImported: 1 });
+  });
+
   it('ZIP con adjuntos: los medios entran desactivados; los inválidos se registran', async () => {
     const { c } = createTestContainer();
     const zip = new AdmZip();

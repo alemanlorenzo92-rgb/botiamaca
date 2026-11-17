@@ -22,7 +22,8 @@ export class ImportError extends Error {
 interface Extracted {
   text: string;
   fileName: string;
-  files: Map<string, Buffer>;
+  /** Adjuntos del ZIP; se descomprimen recién cuando se usan, de a uno. */
+  files: Map<string, () => Buffer>;
 }
 
 function sha256(data: Buffer | string) {
@@ -36,6 +37,7 @@ export class ChatImportService {
     private readonly media: MediaService,
     private readonly jobs: JobRunner,
     private readonly logger: Logger,
+    private readonly limits = { maxUncompressedBytes: 200 * 1024 * 1024, maxFileBytes: 16 * 1024 * 1024 },
   ) {}
 
   extract(data: Buffer, fileName: string): Extracted {
@@ -52,11 +54,15 @@ export class ChatImportService {
       .filter((e) => e.entryName.toLowerCase().endsWith('.txt'))
       .sort((a, b) => b.header.size - a.header.size)[0];
     if (!txt) throw new ImportError('El ZIP no tiene el archivo .txt del chat');
-    const files = new Map<string, Buffer>();
+    const total = entries.reduce((sum, e) => sum + e.header.size, 0);
+    if (total > this.limits.maxUncompressedBytes || txt.header.size > this.limits.maxUncompressedBytes)
+      throw new ImportError('El ZIP descomprimido es demasiado grande');
+    const files = new Map<string, () => Buffer>();
     for (const e of entries) {
-      if (e === txt) continue;
+      // Los adjuntos más grandes que el máximo de la biblioteca se descartan sin descomprimir.
+      if (e === txt || e.header.size > this.limits.maxFileBytes) continue;
       // Solo el nombre del archivo: nunca rutas del ZIP (evita path traversal).
-      files.set(path.basename(e.entryName), e.getData());
+      files.set(path.basename(e.entryName), () => e.getData());
     }
     return { text: txt.getData().toString('utf8'), fileName: path.basename(txt.entryName), files };
   }
@@ -89,13 +95,19 @@ export class ChatImportService {
     const owner = parsed.participants.find((p) => p.toLowerCase() === params.ownerName.trim().toLowerCase());
     if (!owner) throw new ImportError('Elegí cuál de los participantes es la dueña', parsed.participants);
 
+    // El nombre del export suele traer el contacto ("Chat de WhatsApp con Juan…"): no se guarda.
+    const first = parsed.messages[0]!.sentAt.toISOString().slice(0, 10);
+    const safeName = `Chat del ${first.split('-').reverse().join('/')} (${parsed.messages.length} mensajes)${path.extname(params.fileName).toLowerCase() === '.zip' ? '.zip' : '.txt'}`;
+    // Clave de chat para dedupe: mismos participantes reales = mismo chat (no se guarda, solo va hasheada).
+    const chatKey = [...parsed.participants].sort().join('|');
+
     const aliases = new Map<string, string>();
     let n = 0;
     for (const p of parsed.participants) aliases.set(p, p === owner ? OWNER_ALIAS : `Cliente ${++n}`);
 
     const chat = await this.db.importedChat.create({
       data: {
-        fileName: params.fileName.slice(0, 255),
+        fileName: safeName,
         sha256: hash,
         ownerName: OWNER_ALIAS,
         participants: [...aliases.values()],
@@ -106,6 +118,25 @@ export class ChatImportService {
       },
     });
 
+    try {
+      return await this.store(chat.id, parsed, owner, aliases, chatKey, files, params.mediaConsent);
+    } catch (error) {
+      // Sin importación a medias: si algo falla se borra todo y el mismo archivo se puede reintentar.
+      await this.remove(chat.id).catch((e: unknown) => this.logger.error({ err: e, chatId: chat.id }, 'no se pudo limpiar la importación fallida'));
+      throw error;
+    }
+  }
+
+  private async store(
+    chatId: string,
+    parsed: ParsedChat,
+    owner: string,
+    aliases: Map<string, string>,
+    chatKey: string,
+    files: Map<string, () => Buffer>,
+    mediaConsent: boolean,
+  ) {
+    const chat = { id: chatId };
     const rows = parsed.messages.map((m, position) => ({
       chatId: chat.id,
       position,
@@ -115,7 +146,7 @@ export class ChatImportService {
       text: anonymize(m.text, aliases),
       mediaFile: m.mediaFile,
       // Incluye el nombre real (hasheado, no se guarda) para detectar el mismo mensaje en exports solapados.
-      dedupeKey: sha256(`${m.sentAt.toISOString()}|${m.author}|${m.text}|${m.mediaFile ?? ''}`),
+      dedupeKey: sha256(`${chatKey}|${m.sentAt.toISOString()}|${m.author}|${m.text}|${m.mediaFile ?? ''}`),
     }));
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 1000) {
@@ -124,14 +155,14 @@ export class ChatImportService {
 
     let mediaImported = 0;
     const mediaErrors: string[] = [];
-    if (params.mediaConsent) {
+    if (mediaConsent) {
       for (const m of parsed.messages) {
         if (!m.mediaFile) continue;
         const file = files.get(m.mediaFile);
         if (!file) continue;
         try {
           // Los medios importados quedan desactivados hasta que la dueña los revise: la IA no los envía antes.
-          const r = await this.media.upload({ data: file, originalName: m.mediaFile, source: 'IMPORT', importedChatId: chat.id, fields: { active: false } });
+          const r = await this.media.upload({ data: file(), originalName: m.mediaFile, source: 'IMPORT', importedChatId: chat.id, fields: { active: false } });
           if (!r.duplicate) mediaImported++;
         } catch (error) {
           if (error instanceof MediaError) mediaErrors.push(`${m.mediaFile}: ${error.message}`);

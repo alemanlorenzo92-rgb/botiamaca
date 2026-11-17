@@ -115,7 +115,16 @@ export class KnowledgeService {
   private async ask<T>(instructions: string, input: string, name: string, schema: Record<string, unknown>, parser: z.ZodType<T>): Promise<T> {
     if (!this.llm) throw new Error('Falta OPENAI_API_KEY: no se puede extraer conocimiento');
     const res = await this.llm.create(
-      { model: this.cfg.model, instructions, input, text: jsonSchema(name, schema), max_output_tokens: 4000, store: false },
+      {
+        model: this.cfg.model,
+        instructions,
+        input,
+        text: jsonSchema(name, schema),
+        max_output_tokens: 4000,
+        store: false,
+        // Sin esto gpt-5 razona en "medium" y cada tramo tarda tanto que se corta por tiempo.
+        ...(/^(gpt-5|o\d)/.test(this.cfg.model) ? { reasoning: { effort: 'low' as const } } : {}),
+      },
       { signal: AbortSignal.timeout(this.cfg.timeoutMs ?? 120_000) },
     );
     return parser.parse(JSON.parse(outputText(res)));

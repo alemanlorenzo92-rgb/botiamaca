@@ -39,6 +39,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
   private stopping = false;
   private historyBuffer: InboundWhatsAppMessage[] = [];
   private historyTimer: NodeJS.Timeout | null = null;
+  private historyOwner: string | null = null;
 
   constructor(
     private readonly db: PrismaClient,
@@ -144,6 +145,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
 
     // Historial que WhatsApp manda al vincular: no se responde, solo se usa para aprender.
     sock.ev.on('messaging-history.set', ({ messages }) => {
+      this.historyOwner = sock.user?.name ?? this.historyOwner;
       for (const raw of messages) {
         const mapped = mapWAMessage(raw);
         if (mapped) this.historyBuffer.push(mapped);
@@ -154,7 +156,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
         const batch = this.historyBuffer;
         this.historyBuffer = [];
         if (!batch.length) return;
-        void this.onHistory(batch, sock.user?.name ?? null).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
+        void this.onHistory(batch, this.historyOwner).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
       }, HISTORY_QUIET_MS);
     });
 
@@ -222,7 +224,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
     if (this.historyTimer) clearTimeout(this.historyTimer);
     const pending = this.historyBuffer;
     this.historyBuffer = [];
-    if (pending.length) await this.onHistory(pending, this.sock?.user?.name ?? null).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
+    if (pending.length) await this.onHistory(pending, this.historyOwner).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
     this.stopping = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.sock?.end(undefined);

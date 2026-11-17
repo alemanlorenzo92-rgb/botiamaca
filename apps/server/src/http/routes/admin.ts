@@ -73,6 +73,8 @@ export function registerAdminRoutes(c: Container) {
             dailyTokenBudget: z.number().int().positive().nullable().optional(),
             debounceSeconds: z.number().int().min(0).max(60).optional(),
             historyMessages: z.number().int().min(2).max(100).optional(),
+            followupAfterHours: z.number().int().min(1).max(720).nullable().optional(),
+            followupMessage: z.string().min(1).max(1000).optional(),
           }),
           request.body,
         );

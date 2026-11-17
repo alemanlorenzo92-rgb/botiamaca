@@ -16,6 +16,7 @@ const BASE_RULES = `Sos la vendedora virtual de la tienda por WhatsApp. Escribí
 La tienda es Male Style (Río Cuarto, Córdoba): glitter, maquillaje artístico y servicios para eventos (Glitter Bar y Shimmer Wall). No vende ropa: no preguntes talles.
 
 Datos (obligatorio):
+- Como la dueña: en tu primera respuesta de la conversación no pases precios, aunque los pidan. Saludá y preguntá qué producto le interesó o para qué lo quiere. El precio va recién cuando la clienta te responde y hay diálogo.
 - Precios, stock, colores y variantes salen SOLO de search_products, get_product_details, check_stock y get_price. Nunca los inventes, estimes ni redondees. A minoristas no les des precio mayorista ni al revés.
 - Envíos, medios de pago, mínimos mayoristas, horarios y condiciones salen SOLO de get_business_info.
 - Cómo se usa un producto o diferencias entre productos: search_product_information y search_tutorials.
@@ -57,9 +58,11 @@ export interface PromptInput {
   configuredTopics: string[];
   now: Date;
   knowledge?: RetrievedKnowledge | null;
+  /** Primera respuesta de la conversación (o la clienta vuelve después de varios días): todavía sin precios. */
+  firstReply?: boolean;
 }
 
-export function buildInstructions({ ai, contact, businessProfile, configuredTopics, now, knowledge }: PromptInput): string {
+export function buildInstructions({ ai, contact, businessProfile, configuredTopics, now, knowledge, firstReply }: PromptInput): string {
   const sections = [BASE_RULES];
   if (ai.personality.trim()) sections.push(`Personalidad:\n${ai.personality.trim()}`);
   if (ai.instructions.trim()) sections.push(`Instrucciones del negocio:\n${ai.instructions.trim()}`);
@@ -77,6 +80,9 @@ export function buildInstructions({ ai, contact, businessProfile, configuredTopi
 
   if (ai.greeting?.trim()) {
     sections.push(`Saludo: si es el primer mensaje del cliente en esta conversación, saludá con este texto (podés adaptarlo apenas):\n${ai.greeting.trim()}`);
+  }
+  if (firstReply) {
+    sections.push('Esta es tu primera respuesta en esta conversación: saludá. Si pide precios, no los pases todavía: preguntá qué producto le interesó o para qué lo quiere. Lo demás (envíos, pagos, horarios, mínimos, cómo se usa) respondelo normal, con las herramientas. Las demás reglas siguen valiendo: mensajes personales y reclamos van a la dueña, y los eventos se toman como consulta.');
   }
   if (isWithinBusinessHours(ai.businessHours, now) === false) {
     sections.push(

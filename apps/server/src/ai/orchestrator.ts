@@ -179,6 +179,9 @@ export class AiOrchestrator implements AiResponder {
         configuredTopics: BUSINESS_SETTING_KEYS.filter((k) => business[k] !== undefined && business[k] !== null),
         now: new Date(),
         knowledge: await this.retrieve(recent, toolLog),
+        firstReply: isFirstReply(
+          (await db.message.findFirst({ where: { conversationId, direction: 'OUTBOUND', author: { in: ['AI', 'HUMAN'] }, status: 'SENT' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }))?.createdAt ?? null,
+        ),
       });
       const input = historyToInput(recent.reverse());
       if (!input.length) {
@@ -270,4 +273,9 @@ export class AiOrchestrator implements AiResponder {
       throw error;
     }
   }
+}
+
+/** Si la tienda nunca respondió (o la última respuesta tiene más de 3 días), la clienta recién llega o vuelve. */
+export function isFirstReply(lastReplyAt: Date | null, now = Date.now()): boolean {
+  return !lastReplyAt || now - lastReplyAt.getTime() > 3 * 24 * 60 * 60 * 1000;
 }

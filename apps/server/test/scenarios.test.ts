@@ -112,7 +112,7 @@ describe('datos del negocio y eventos', () => {
   it('Shimmer Walls: sin info cargada lo informa y registra el lead', async () => {
     const { c, llm } = createTestContainer();
     llm.push(
-      toolCalls(['get_service_info', { service: 'SHIMMER_WALL' }]),
+      toolCalls(['search_service_information', { service: 'SHIMMER_WALL' }]),
       toolCalls([
         'save_event_lead',
         {

@@ -11,8 +11,6 @@ export const BUSINESS_SETTING_KEYS = [
   'shipping_policy',
   'wholesale_conditions',
   'retail_conditions',
-  'service_glitter_bar',
-  'service_shimmer_wall',
   'handoff_rules',
   'faq',
 ] as const;

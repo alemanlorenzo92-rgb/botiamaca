@@ -6,7 +6,8 @@ import { seed } from '../src/cli.js';
 import { createContainer } from '../src/container.js';
 import { loadEnv } from '../src/core/env.js';
 import { createLogger } from '../src/core/logger.js';
-import type { InboundWhatsAppMessage, WhatsAppTransport } from '../src/whatsapp/transport.js';
+import type { MediaStorage } from '../src/media/storage.js';
+import type { InboundWhatsAppMessage, OutboundMedia, WhatsAppTransport } from '../src/whatsapp/transport.js';
 import { TEST_DATABASE_URL } from './db-url.js';
 
 export const db = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } });
@@ -24,6 +25,9 @@ export async function resetDb() {
 export class FakeTransport implements WhatsAppTransport {
   connected = true;
   sent: { jid: string; text: string }[] = [];
+  media: { jid: string; kind: string; mimetype: string; caption: string | null; size: number }[] = [];
+  /** Cantidad de envíos de medios que van a fallar antes de funcionar */
+  failMedia = 0;
   isConnected() {
     return this.connected;
   }
@@ -31,6 +35,34 @@ export class FakeTransport implements WhatsAppTransport {
     if (!this.connected) throw new Error('WhatsApp no está conectado');
     this.sent.push({ jid, text });
     return { externalId: `out-${randomUUID()}` };
+  }
+  async sendMedia(jid: string, m: OutboundMedia) {
+    if (!this.connected) throw new Error('WhatsApp no está conectado');
+    if (this.failMedia > 0) {
+      this.failMedia--;
+      throw new Error('falla simulada de envío');
+    }
+    this.media.push({ jid, kind: m.kind, mimetype: m.mimetype, caption: m.caption ?? null, size: m.data.length });
+    return { externalId: `out-${randomUUID()}` };
+  }
+}
+
+/** Almacenamiento de archivos en memoria para tests. */
+export class MemoryStorage implements MediaStorage {
+  files = new Map<string, Buffer>();
+  async put(key: string, data: Buffer) {
+    this.files.set(key, data);
+  }
+  async get(key: string) {
+    const f = this.files.get(key);
+    if (!f) throw new Error('no existe');
+    return f;
+  }
+  async exists(key: string) {
+    return this.files.has(key);
+  }
+  async remove(key: string) {
+    this.files.delete(key);
   }
 }
 
@@ -102,8 +134,9 @@ export function createTestContainer() {
   const logger = createLogger('silent');
   const transport = new FakeTransport();
   const llm = new FakeLlm();
-  const c = createContainer(env, logger, { db, transport, llm });
-  return { c, transport, llm };
+  const storage = new MemoryStorage();
+  const c = createContainer(env, logger, { db, transport, llm, storage });
+  return { c, transport, llm, storage };
 }
 
 export type TestContainer = ReturnType<typeof createTestContainer>['c'];

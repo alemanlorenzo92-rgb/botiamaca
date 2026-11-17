@@ -1,0 +1,175 @@
+import type { EventService, Prisma, PrismaClient } from '@prisma/client';
+import { normalize } from '../core/text.js';
+import { RETAIL_PRICE_LIST, WHOLESALE_PRICE_LIST } from './catalog.service.js';
+
+export interface Faq {
+  q: string;
+  a: string;
+}
+
+export interface VariantInput {
+  id?: string | null;
+  values: string[];
+  sku?: string | null;
+  /** null = sin precio cargado (la IA dice que no tiene el dato) */
+  retailPrice?: number | null;
+  wholesalePrice?: number | null;
+  /** null = sin dato de stock; número = unidades disponibles */
+  stock?: number | null;
+}
+
+export interface ProductInput {
+  name: string;
+  description?: string | null;
+  features?: string | null;
+  usage?: string | null;
+  recommendations?: string | null;
+  faqs?: Faq[];
+  tags?: string[];
+  brand?: string | null;
+  url?: string | null;
+  published?: boolean;
+  categoryIds?: string[];
+  variants?: VariantInput[];
+}
+
+export interface TutorialInput {
+  title: string;
+  content?: string;
+  productId?: string | null;
+  categoryId?: string | null;
+  service?: EventService | null;
+  mediaIds?: string[];
+  active?: boolean;
+}
+
+export class CatalogNotFoundError extends Error {}
+
+/** Alta, baja y modificación del catálogo propio de Male Style (la fuente de verdad es el panel). */
+export class CatalogAdminService {
+  constructor(private readonly db: PrismaClient) {}
+
+  async ensurePriceLists() {
+    const retail = await this.db.priceList.upsert({
+      where: { code: RETAIL_PRICE_LIST },
+      create: { code: RETAIL_PRICE_LIST, name: 'Minorista', source: 'manual' },
+      update: {},
+    });
+    const wholesale = await this.db.priceList.upsert({
+      where: { code: WHOLESALE_PRICE_LIST },
+      create: { code: WHOLESALE_PRICE_LIST, name: 'Mayorista', source: 'manual' },
+      update: {},
+    });
+    return { retail, wholesale };
+  }
+
+  saveCategory(data: { id?: string; name: string; description?: string | null; visible?: boolean }) {
+    const fields = { name: data.name.trim(), description: data.description?.trim() || null, visible: data.visible ?? true };
+    return data.id
+      ? this.db.category.update({ where: { id: data.id }, data: fields })
+      : this.db.category.create({ data: fields });
+  }
+
+  async deleteCategory(id: string) {
+    await this.db.category.delete({ where: { id } });
+  }
+
+  async createProduct(input: ProductInput) {
+    const product = await this.db.product.create({ data: { name: input.name.trim() } });
+    return this.updateProduct(product.id, input);
+  }
+
+  async updateProduct(id: string, input: Partial<ProductInput>) {
+    const lists = await this.ensurePriceLists();
+    await this.db.$transaction(async (tx) => {
+      const exists = await tx.product.findFirst({ where: { id, deletedAt: null } });
+      if (!exists) throw new CatalogNotFoundError('Producto inexistente');
+      await tx.product.update({
+        where: { id },
+        data: {
+          name: input.name?.trim(),
+          description: input.description === undefined ? undefined : input.description?.trim() || null,
+          features: input.features === undefined ? undefined : input.features?.trim() || null,
+          usage: input.usage === undefined ? undefined : input.usage?.trim() || null,
+          recommendations: input.recommendations === undefined ? undefined : input.recommendations?.trim() || null,
+          faqs: input.faqs === undefined ? undefined : (input.faqs.filter((f) => f.q.trim() && f.a.trim()) as unknown as Prisma.InputJsonValue),
+          tags: input.tags?.map((t) => t.trim()).filter(Boolean),
+          brand: input.brand === undefined ? undefined : input.brand?.trim() || null,
+          url: input.url === undefined ? undefined : input.url?.trim() || null,
+          published: input.published,
+        },
+      });
+      if (input.categoryIds) {
+        await tx.productCategory.deleteMany({ where: { productId: id } });
+        if (input.categoryIds.length) {
+          await tx.productCategory.createMany({ data: input.categoryIds.map((categoryId) => ({ productId: id, categoryId })) });
+        }
+      }
+      if (input.variants) {
+        const keep: string[] = [];
+        // Un producto sin variantes explícitas tiene una "Única" para poder llevar precio y stock.
+        const variants = input.variants.length ? input.variants : [{ values: [] }];
+        for (const v of variants) {
+          const variant = v.id
+            ? await tx.productVariant.update({ where: { id: v.id, productId: id }, data: { values: v.values, sku: v.sku ?? null, deletedAt: null } })
+            : await tx.productVariant.create({ data: { productId: id, values: v.values, sku: v.sku ?? null } });
+          keep.push(variant.id);
+          for (const [listId, amount] of [
+            [lists.retail.id, v.retailPrice],
+            [lists.wholesale.id, v.wholesalePrice],
+          ] as const) {
+            if (amount === undefined) continue;
+            const current = await tx.variantPrice.findFirst({ where: { variantId: variant.id, priceListId: listId, validTo: null } });
+            if (current && amount !== null && Number(current.amount) === amount) continue;
+            if (current) await tx.variantPrice.update({ where: { id: current.id }, data: { validTo: new Date() } });
+            if (amount !== null) await tx.variantPrice.create({ data: { variantId: variant.id, priceListId: listId, amount } });
+          }
+          if (v.stock !== undefined) {
+            if (v.stock === null) await tx.inventory.deleteMany({ where: { variantId: variant.id } });
+            else
+              await tx.inventory.upsert({
+                where: { variantId: variant.id },
+                create: { variantId: variant.id, managed: true, quantity: v.stock },
+                update: { managed: true, quantity: v.stock, syncedAt: new Date() },
+              });
+          }
+        }
+        await tx.productVariant.updateMany({ where: { productId: id, id: { notIn: keep }, deletedAt: null }, data: { deletedAt: new Date() } });
+      }
+    });
+    return this.refreshSearch(id);
+  }
+
+  async deleteProduct(id: string) {
+    await this.db.product.update({ where: { id }, data: { deletedAt: new Date(), published: false } });
+  }
+
+  private async refreshSearch(id: string) {
+    const p = await this.db.product.findUniqueOrThrow({ where: { id }, include: { categories: { include: { category: true } } } });
+    const faqs = Array.isArray(p.faqs) ? (p.faqs as unknown as Faq[]).map((f) => `${f.q} ${f.a}`).join(' ') : '';
+    const searchText = normalize(
+      [p.name, p.brand, p.description, p.features, p.usage, p.recommendations, faqs, p.tags.join(' '), p.categories.map((c) => c.category.name).join(' ')]
+        .filter(Boolean)
+        .join(' '),
+    );
+    return this.db.product.update({ where: { id }, data: { searchText } });
+  }
+
+  async saveTutorial(id: string | null, input: TutorialInput) {
+    const data = {
+      title: input.title.trim(),
+      content: input.content?.trim() ?? '',
+      productId: input.productId ?? null,
+      categoryId: input.categoryId ?? null,
+      service: input.service ?? null,
+      active: input.active ?? true,
+    };
+    const media = input.mediaIds ? { set: input.mediaIds.map((m) => ({ id: m })) } : undefined;
+    const t = id
+      ? await this.db.tutorial.update({ where: { id }, data: { ...data, media } })
+      : await this.db.tutorial.create({ data: { ...data, media: input.mediaIds ? { connect: input.mediaIds.map((m) => ({ id: m })) } : undefined } });
+    const full = await this.db.tutorial.findUniqueOrThrow({ where: { id: t.id }, include: { product: true, category: true } });
+    const searchText = normalize([full.title, full.content, full.product?.name, full.category?.name, full.service?.replace('_', ' ')].filter(Boolean).join(' '));
+    return this.db.tutorial.update({ where: { id: t.id }, data: { searchText } });
+  }
+}

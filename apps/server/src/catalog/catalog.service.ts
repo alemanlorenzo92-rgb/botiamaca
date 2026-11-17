@@ -105,6 +105,13 @@ export class CatalogService {
       ...this.summarize(p, buyerType),
       variants: p.variants.map((v) => this.variantView(v, buyerType)),
       description: truncate(p.description ?? '', 1200),
+      features: p.features,
+      usage: p.usage,
+      recommendations: p.recommendations,
+      faqs: p.faqs,
+      media: (
+        await this.db.mediaAsset.findMany({ where: { productId: p.id, active: true }, select: { id: true, kind: true, title: true }, take: 6 })
+      ).map((m) => ({ media_id: m.id, kind: m.kind, title: m.title })),
       tags: p.tags,
       free_shipping: p.freeShipping,
       image: p.imageUrls[0] ?? null,

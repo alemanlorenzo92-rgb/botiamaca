@@ -14,8 +14,6 @@ const KEY_INFO: Record<string, { label: string; help: string }> = {
   shipping_policy: { label: 'Envíos', help: 'Zonas, costos o cómo se cotizan, tiempos, retiro.' },
   wholesale_conditions: { label: 'Condiciones mayoristas', help: 'Mínimo de compra, cómo se accede a la lista mayorista.' },
   retail_conditions: { label: 'Condiciones minoristas', help: 'Cambios, devoluciones, promociones vigentes.' },
-  service_glitter_bar: { label: 'Glitter Bar', help: 'Qué es, qué incluye, condiciones. El precio lo cotiza el equipo.' },
-  service_shimmer_wall: { label: 'Shimmer Walls', help: 'Medidas, colores, alquiler, condiciones.' },
   handoff_rules: { label: 'Cuándo pasar a una persona', help: 'Casos en los que la IA debe derivar siempre.' },
   faq: { label: 'Preguntas frecuentes', help: 'Respuestas confirmadas por el negocio.' },
 };

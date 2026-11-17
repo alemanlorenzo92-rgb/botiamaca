@@ -2,6 +2,10 @@ import type { BuyerType, Contact, PrismaClient } from '@prisma/client';
 import type { FunctionTool } from 'openai/resources/responses/responses';
 import { z } from 'zod';
 import type { CatalogService } from '../catalog/catalog.service.js';
+import type { ServicesService } from '../catalog/services.service.js';
+import type { MessageSender } from '../conversations/sender.js';
+import { normalize } from '../core/text.js';
+import type { MediaService } from '../media/media.service.js';
 import type { HandoffService } from '../conversations/handoff.service.js';
 import type { AuditService } from '../core/audit.js';
 import type { BusinessSettingKey, SettingsService } from '../core/settings.js';
@@ -19,6 +23,9 @@ export interface ToolDeps {
   handoff: HandoffService;
   settings: SettingsService;
   audit: AuditService;
+  media: MediaService;
+  sender: MessageSender;
+  services: ServicesService;
 }
 
 export interface ToolContext {
@@ -26,7 +33,11 @@ export interface ToolContext {
   contact: Contact;
   /** Se marca cuando la IA deriva: la conversación deja de estar en manos de la IA. */
   handedOff: boolean;
+  /** Fotos/videos enviados en esta respuesta (máximo MAX_MEDIA_PER_REPLY) */
+  mediaSent: number;
 }
+
+export const MAX_MEDIA_PER_REPLY = 3;
 
 export class ToolInputError extends Error {}
 
@@ -43,11 +54,6 @@ const BUSINESS_TOPICS = {
   handoff_rules: 'Cuándo derivar a una persona y horarios de atención humana',
   faq: 'Preguntas frecuentes',
 } as const satisfies Partial<Record<BusinessSettingKey, string>>;
-
-const SERVICE_KEYS = {
-  GLITTER_BAR: 'service_glitter_bar',
-  SHIMMER_WALL: 'service_shimmer_wall',
-} as const satisfies Record<string, BusinessSettingKey>;
 
 const id = z.string().uuid();
 const nullableText = (max = 500) => z.string().max(max).nullable();
@@ -75,7 +81,7 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
   tool({
     name: 'search_products',
     description:
-      'Busca productos en el catálogo sincronizado de la tienda. Usalo para cualquier consulta de productos o recomendaciones. Devuelve precio y stock reales; si no aparece, no existe en el catálogo.',
+      'Busca productos en el catálogo de Male Style cargado por la dueña. Usalo para cualquier consulta de productos o recomendaciones. Devuelve precio y stock reales; si no aparece, no existe en el catálogo.',
     schema: z.object({
       query: z.string().min(1).max(200).describe('Qué busca el cliente, con sus palabras (tipo de prenda, color, talle, uso)'),
       only_in_stock: z.boolean().nullable().describe('true para mostrar solo productos con stock'),
@@ -92,14 +98,14 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
   }),
   tool({
     name: 'get_product_details',
-    description: 'Detalle completo de un producto: descripción, todas las variantes (talle/color), precio y stock de cada una.',
+    description: 'Detalle completo de un producto: descripción, características, usos, recomendaciones, preguntas frecuentes, fotos/videos disponibles y todas las variantes con precio y stock (null = sin dato cargado).',
     schema: z.object({ product_id: id }),
     run: async (a, ctx, d) => (await d.catalog.details(a.product_id, buyer(ctx))) ?? { error: 'Producto inexistente o dado de baja' },
   }),
   tool({
     name: 'check_stock',
     description:
-      'Stock actual de una variante. IN_STOCK = disponible (quantity = unidades), OUT_OF_STOCK = sin stock, NOT_TRACKED = la tienda no controla stock (consultar), UNKNOWN = sin dato.',
+      'Stock actual de una variante. IN_STOCK = disponible (quantity = unidades), OUT_OF_STOCK = sin stock, NOT_TRACKED = no se controla stock (consultar), UNKNOWN = la dueña no cargó el dato: no lo supongas.',
     schema: z.object({ variant_id: id }),
     run: async (a, _ctx, d) => (await d.catalog.stock(a.variant_id)) ?? { error: 'Variante inexistente' },
   }),
@@ -122,13 +128,81 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
     },
   }),
   tool({
-    name: 'get_service_info',
+    name: 'search_product_information',
     description:
-      'Información de los servicios para eventos: GLITTER_BAR (barra de glitter) y SHIMMER_WALL (paredes shimmer). Incluye qué es, qué incluye y condiciones cargadas.',
+      'Información ampliada (características, usos, recomendaciones, preguntas frecuentes, fotos disponibles) de los productos que coinciden con la consulta. Usalo para preguntas de cómo se usa, para qué sirve o diferencias entre productos.',
+    schema: z.object({ query: z.string().min(1).max(200) }),
+    run: async (a, ctx, d) => {
+      const { results } = await d.catalog.search(a.query, { limit: 3, buyerType: buyer(ctx) });
+      const details = await Promise.all(results.map((r) => d.catalog.details(r.product_id, buyer(ctx))));
+      return { results: details.filter(Boolean) };
+    },
+  }),
+  tool({
+    name: 'search_service_information',
+    description:
+      'Información cargada de los servicios para eventos: GLITTER_BAR (barra de glitter) y SHIMMER_WALL (paredes shimmer): qué es, qué incluye, condiciones, preguntas frecuentes, fotos/videos y tutoriales. configured=false = no hay datos: no inventes.',
     schema: z.object({ service: z.enum(['GLITTER_BAR', 'SHIMMER_WALL']) }),
     run: async (a, _ctx, d) => {
-      const value = await d.settings.getBusiness(SERVICE_KEYS[a.service]);
-      return value === null ? { service: a.service, configured: false, note: NO_DATA } : { service: a.service, configured: true, info: value };
+      const info = await d.services.forAi(a.service);
+      return info.configured ? info : { ...info, note: NO_DATA };
+    },
+  }),
+  tool({
+    name: 'search_media',
+    description:
+      'Busca fotos y videos REALES de Male Style en la biblioteca (productos, servicios, trabajos, tutoriales). Devuelve media_id para enviarlos con send_image o send_video. Si no hay resultados, no hay material: no lo prometas.',
+    schema: z.object({
+      query: z.string().min(1).max(200).describe('Qué foto o video busca el cliente'),
+      kind: z.enum(['IMAGE', 'VIDEO']).nullable(),
+      product_id: id.nullable(),
+      service: z.enum(['GLITTER_BAR', 'SHIMMER_WALL']).nullable(),
+    }),
+    run: async (a, _ctx, d) => ({
+      results: await d.media.search(a.query, { kind: a.kind, productId: a.product_id, service: a.service, limit: 6 }),
+    }),
+  }),
+  tool({
+    name: 'get_media_details',
+    description: 'Detalle de una foto o video de la biblioteca (título, descripción, etiquetas, producto o servicio asociado).',
+    schema: z.object({ media_id: id }),
+    run: async (a, _ctx, d) => (await d.media.details(a.media_id)) ?? { error: 'No existe ese archivo' },
+  }),
+  tool({
+    name: 'send_image',
+    description: `Envía al cliente una foto de la biblioteca (media_id de search_media). Máximo ${MAX_MEDIA_PER_REPLY} archivos por respuesta. Mandá solo lo que el cliente pidió o le sirve.`,
+    schema: z.object({ media_id: id, caption: nullableText(300).describe('Texto corto que acompaña la foto') }),
+    run: (a, ctx, d) => sendMediaTool('IMAGE', a.media_id, a.caption, ctx, d),
+  }),
+  tool({
+    name: 'send_video',
+    description: `Envía al cliente un video de la biblioteca (media_id de search_media). Máximo ${MAX_MEDIA_PER_REPLY} archivos por respuesta.`,
+    schema: z.object({ media_id: id, caption: nullableText(300) }),
+    run: (a, ctx, d) => sendMediaTool('VIDEO', a.media_id, a.caption, ctx, d),
+  }),
+  tool({
+    name: 'search_tutorials',
+    description: 'Busca tutoriales cargados (cómo usar o aplicar un producto, cómo es un servicio). Devuelve el texto y los media_id de sus videos/fotos.',
+    schema: z.object({ query: z.string().min(1).max(200) }),
+    run: async (a, _ctx, d) => {
+      const terms = normalize(a.query)
+        .split(' ')
+        .filter((t) => t.length > 2);
+      const rows = await d.db.tutorial.findMany({
+        where: { active: true, ...(terms.length ? { OR: terms.map((t) => ({ searchText: { contains: t } })) } : {}) },
+        include: { media: { where: { active: true }, select: { id: true, kind: true, title: true } }, product: { select: { name: true } } },
+        take: 5,
+      });
+      return {
+        results: rows.map((t) => ({
+          tutorial_id: t.id,
+          title: t.title,
+          content: t.content.slice(0, 1500),
+          product: t.product?.name ?? null,
+          service: t.service,
+          media: t.media.map((m) => ({ media_id: m.id, kind: m.kind, title: m.title })),
+        })),
+      };
     },
   }),
   tool({
@@ -277,6 +351,24 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
     },
   }),
 ];
+
+async function sendMediaTool(kind: 'IMAGE' | 'VIDEO', mediaId: string, caption: string | null, ctx: ToolContext, d: ToolDeps) {
+  if (ctx.mediaSent >= MAX_MEDIA_PER_REPLY) throw new ToolInputError(`Ya enviaste ${MAX_MEDIA_PER_REPLY} archivos en esta respuesta`);
+  const asset = await d.db.mediaAsset.findUnique({ where: { id: mediaId } });
+  if (!asset || !asset.active) throw new ToolInputError('Ese archivo no existe o está desactivado. Buscá con search_media.');
+  if (asset.kind !== kind) throw new ToolInputError(kind === 'IMAGE' ? 'Ese archivo es un video: usá send_video' : 'Ese archivo es una foto: usá send_image');
+  // El backend vuelve a chequear el estado: si la dueña tomó la conversación, no se envía nada.
+  const conv = await d.db.conversation.findUniqueOrThrow({ where: { id: ctx.conversationId } });
+  if (conv.status !== 'AI_ACTIVE') {
+    ctx.handedOff = true;
+    return { sent: false, note: 'La conversación ya está con la dueña' };
+  }
+  if (!d.sender.isReady()) throw new ToolInputError('WhatsApp no está conectado: no se puede enviar el archivo ahora');
+  const msg = await d.sender.sendMedia({ conversationId: ctx.conversationId, mediaId, caption, author: 'AI', requireActive: true });
+  if (msg.status !== 'SENT') throw new ToolInputError(`No se pudo enviar el archivo (${msg.error ?? 'error'}). Avisale al cliente sin inventar el contenido.`);
+  ctx.mediaSent++;
+  return { sent: true };
+}
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 

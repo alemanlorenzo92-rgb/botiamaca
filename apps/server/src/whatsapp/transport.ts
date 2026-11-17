@@ -13,6 +13,14 @@ export interface InboundWhatsAppMessage {
 export interface WhatsAppTransport {
   isConnected(): boolean;
   sendText(jid: string, text: string): Promise<{ externalId: string }>;
+  sendMedia(jid: string, media: OutboundMedia): Promise<{ externalId: string }>;
+}
+
+export interface OutboundMedia {
+  kind: 'IMAGE' | 'VIDEO';
+  data: Buffer;
+  mimetype: string;
+  caption?: string | null;
 }
 
 export class WhatsAppNotConnectedError extends Error {

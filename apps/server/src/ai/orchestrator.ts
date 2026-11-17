@@ -147,7 +147,7 @@ export class AiOrchestrator implements AiResponder {
         }),
         settings.getAllBusiness(),
       ]);
-      const ctx: ToolContext = { conversationId, contact: conversation.contact, handedOff: false };
+      const ctx: ToolContext = { conversationId, contact: conversation.contact, handedOff: false, mediaSent: 0 };
       const instructions = buildInstructions({
         ai,
         contact: ctx.contact,

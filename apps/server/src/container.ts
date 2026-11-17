@@ -1,7 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
 import { AiOrchestrator, openAiLlm, type LlmClient } from './ai/orchestrator.js';
+import { CatalogAdminService } from './catalog/catalog-admin.service.js';
 import { CatalogService } from './catalog/catalog.service.js';
+import { ServicesService } from './catalog/services.service.js';
 import { ConversationService } from './conversations/conversation.service.js';
 import { HandoffService } from './conversations/handoff.service.js';
 import { ReplyGuard } from './conversations/reply-guard.js';
@@ -17,13 +19,17 @@ import { FollowupsService } from './events/followups.service.js';
 import { LeadsService } from './events/leads.service.js';
 import { AuthService } from './http/auth.js';
 import { CartService } from './sales/cart.service.js';
+import { MediaService } from './media/media.service.js';
+import { LocalMediaStorage } from './media/storage.js';
 import { DisabledTransport, WhatsAppGateway } from './whatsapp/gateway.js';
+import type { MediaStorage } from './media/storage.js';
 import type { InboundWhatsAppMessage, WhatsAppTransport } from './whatsapp/transport.js';
 
 export interface ContainerOverrides {
   db?: PrismaClient;
   transport?: WhatsAppTransport;
   llm?: LlmClient | null;
+  storage?: MediaStorage;
 }
 
 /** Arma todos los servicios. Un solo proceso: Baileys exige una única instancia. */
@@ -42,12 +48,18 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
       : null;
   const transport: WhatsAppTransport = overrides.transport ?? gateway ?? new DisabledTransport();
 
-  const sender = new MessageSender(db, transport, bus);
+  const media = new MediaService(db, overrides.storage ?? new LocalMediaStorage(env.MEDIA_DIR), {
+    maxImageBytes: env.MEDIA_MAX_IMAGE_MB * 1024 * 1024,
+    maxVideoBytes: env.MEDIA_MAX_VIDEO_MB * 1024 * 1024,
+  });
+  const sender = new MessageSender(db, transport, bus, media);
   const handoff = new HandoffService(db, bus, audit, settings, sender);
   const conversations = new ConversationService(db, bus, handoff);
 
 
   const catalog = new CatalogService(db);
+  const catalogAdmin = new CatalogAdminService(db);
+  const services = new ServicesService(db);
   const cart = new CartService(db, bus);
   const leads = new LeadsService(db, bus);
   const followups = new FollowupsService(db, bus, logger);
@@ -60,7 +72,7 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
         : null;
   const ai = new AiOrchestrator(
     llm,
-    { db, catalog, cart, leads, followups, handoff, settings, audit },
+    { db, catalog, cart, leads, followups, handoff, settings, audit, media, sender, services },
     {
       model: env.OPENAI_MODEL,
       maxOutputTokens: env.OPENAI_MAX_OUTPUT_TOKENS,
@@ -94,6 +106,9 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     handoff,
     conversations,
     catalog,
+    catalogAdmin,
+    services,
+    media,
     cart,
     leads,
     followups,

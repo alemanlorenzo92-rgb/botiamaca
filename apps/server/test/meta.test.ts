@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildInstructions } from '../src/ai/prompt.js';
 import { buildServer } from '../src/http/server.js';
 import { createTestContainer, db, resetDb, textReply, type FakeLlm, type FakeTransport, type TestContainer } from './helpers.js';
 
@@ -175,6 +176,25 @@ describe('webhook de Meta', () => {
       expect(await db.message.findFirst({ where: { externalId: 'ig-owner-mid' } })).toMatchObject({ direction: 'OUTBOUND', author: 'HUMAN' });
     });
     expect(await db.message.count()).toBe(3);
+  });
+
+  it('incluye el número escrito solo en las instrucciones de Instagram', async () => {
+    const contact = await db.contact.create({ data: { waJid: 'ig:PROMPT_CUSTOMER', channel: 'INSTAGRAM' } });
+    const common = {
+      ai: await c.settings.getAi(),
+      contact,
+      whatsappLink: 'https://wa.me/5493584123456',
+      businessProfile: null,
+      configuredTopics: [],
+      now: new Date(),
+    };
+    const instagram = buildInstructions({ ...common, channel: 'INSTAGRAM' });
+    const messenger = buildInstructions({ ...common, channel: 'MESSENGER' });
+
+    expect(instagram).toContain('+54 9 3584123456');
+    expect(instagram).toContain('https://wa.me/5493584123456');
+    expect(messenger).toContain('https://wa.me/5493584123456');
+    expect(messenger).not.toContain('+54 9 3584123456');
   });
 
   it('no envía seguimientos automáticos a una conversación de Instagram elegible', async () => {

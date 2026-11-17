@@ -51,6 +51,17 @@ function formatJson(value: Prisma.JsonValue): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
+function whatsappDigits(link: string): string | null {
+  try {
+    const url = new URL(link);
+    if (url.hostname !== 'wa.me') return null;
+    const digits = url.pathname.slice(1);
+    return /^\d+$/.test(digits) ? digits : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface PromptInput {
   ai: AiSetting;
   contact: Contact;
@@ -115,7 +126,14 @@ export function buildInstructions({ ai, contact, channel, whatsappLink, business
   }
   if (channel !== 'WHATSAPP') {
     const label = channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook';
-    const offer = whatsappLink ? `ofrecele el link de WhatsApp: ${whatsappLink}` : 'ofrecele seguir por WhatsApp';
+    let offer = whatsappLink ? `ofrecele el link de WhatsApp: ${whatsappLink}` : 'ofrecele seguir por WhatsApp';
+    if (channel === 'INSTAGRAM' && whatsappLink) {
+      const digits = whatsappDigits(whatsappLink);
+      if (digits) {
+        const number = digits.startsWith('549') ? `+54 9 ${digits.slice(3)}` : `+${digits}`;
+        offer = `pasale el número de WhatsApp escrito (${number}) y también el link (${whatsappLink}), porque en Instagram a veces el link no se puede tocar`;
+      }
+    }
     sections.push(
       `Estás respondiendo por ${label}. Tu objetivo principal es que la clienta siga la charla por WhatsApp, donde la atendemos mejor: respondé corto y cálido y ${offer}. Precios, pedidos y presupuestos preferimos verlos por WhatsApp. Si la clienta dice que prefiere seguir por acá, atendela por acá normalmente, con las reglas de siempre (precios, pedidos y herramientas incluidos), y no le vuelvas a insistir con WhatsApp.`,
     );

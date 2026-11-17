@@ -129,6 +129,11 @@ export class MediaService {
     return this.refreshSearch(id);
   }
 
+  async refreshCategory(categoryId: string) {
+    const assets = await this.db.mediaAsset.findMany({ where: { categoryId }, select: { id: true } });
+    for (const { id } of assets) await this.refreshSearch(id);
+  }
+
   private async refreshSearch(id: string) {
     const a = await this.db.mediaAsset.findUniqueOrThrow({ where: { id }, include });
     const searchText = normalize(

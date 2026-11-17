@@ -63,11 +63,17 @@ export class CatalogAdminService {
     return { retail, wholesale };
   }
 
-  saveCategory(data: { id?: string; name: string; description?: string | null; visible?: boolean }) {
-    const fields = { name: data.name.trim(), description: data.description?.trim() || null, visible: data.visible ?? true };
-    return data.id
-      ? this.db.category.update({ where: { id: data.id }, data: fields })
-      : this.db.category.create({ data: fields });
+  async saveCategory(data: { id?: string; name: string; description?: string | null; visible?: boolean }) {
+    const description = data.description === undefined ? undefined : data.description?.trim() || null;
+    if (!data.id) return this.db.category.create({ data: { name: data.name.trim(), description, visible: data.visible ?? true } });
+    const category = await this.db.category.update({ where: { id: data.id }, data: { name: data.name.trim(), description, visible: data.visible } });
+    const [products, tutorials] = await Promise.all([
+      this.db.product.findMany({ where: { categories: { some: { categoryId: category.id } } }, select: { id: true } }),
+      this.db.tutorial.findMany({ where: { categoryId: category.id }, select: { id: true } }),
+    ]);
+    for (const { id } of products) await this.refreshSearch(id);
+    for (const { id } of tutorials) await this.refreshTutorialSearch(id);
+    return category;
   }
 
   async deleteCategory(id: string) {
@@ -174,8 +180,12 @@ export class CatalogAdminService {
     const t = id
       ? await this.db.tutorial.update({ where: { id }, data: { ...data, media } })
       : await this.db.tutorial.create({ data: { ...data, media: input.mediaIds ? { connect: input.mediaIds.map((m) => ({ id: m })) } : undefined } });
-    const full = await this.db.tutorial.findUniqueOrThrow({ where: { id: t.id }, include: { product: true, category: true } });
+    return this.refreshTutorialSearch(t.id);
+  }
+
+  private async refreshTutorialSearch(id: string) {
+    const full = await this.db.tutorial.findUniqueOrThrow({ where: { id }, include: { product: true, category: true } });
     const searchText = normalize([full.title, full.content, full.product?.name, full.category?.name, full.service?.replace('_', ' ')].filter(Boolean).join(' '));
-    return this.db.tutorial.update({ where: { id: t.id }, data: { searchText } });
+    return this.db.tutorial.update({ where: { id }, data: { searchText } });
   }
 }

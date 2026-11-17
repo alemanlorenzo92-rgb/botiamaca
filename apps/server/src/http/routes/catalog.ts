@@ -141,6 +141,7 @@ export function registerCatalogRoutes(c: Container) {
     app.post('/catalog/categories', async (request) => {
       const body = parse(z.object({ id: id.optional(), name: z.string().min(1).max(120), description: optText(1000), visible: z.boolean().optional() }), request.body);
       const category = await c.catalogAdmin.saveCategory(body);
+      if (body.id) await c.media.refreshCategory(category.id);
       await audit(request, body.id ? 'category.updated' : 'category.created', 'category', category.id);
       return { category };
     });

@@ -29,6 +29,8 @@ import { ChatImportService } from './knowledge/import.service.js';
 import { JobRunner } from './knowledge/jobs.js';
 import { KnowledgeService } from './knowledge/knowledge.service.js';
 import type { InboundWhatsAppMessage, WhatsAppTransport } from './whatsapp/transport.js';
+import { ChannelRouter } from './meta/channel-router.js';
+import { MetaTransport } from './meta/meta-transport.js';
 
 export interface ContainerOverrides {
   db?: PrismaClient;
@@ -53,7 +55,10 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     !overrides.transport && env.WHATSAPP_ENABLED
       ? new WhatsAppGateway(db, cipher, bus, logger, (msg) => onMessage(msg), () => onConnected(), (msgs, owner) => onHistory(msgs, owner))
       : null;
-  const transport: WhatsAppTransport = overrides.transport ?? gateway ?? new DisabledTransport();
+  const whatsappTransport: WhatsAppTransport = overrides.transport ?? gateway ?? new DisabledTransport();
+  const metaEnabled = !!(env.META_APP_SECRET && env.META_VERIFY_TOKEN && env.META_PAGE_ACCESS_TOKEN);
+  const metaTransport = new MetaTransport(metaEnabled ? env.META_PAGE_ACCESS_TOKEN! : null);
+  const transport: WhatsAppTransport = new ChannelRouter(whatsappTransport, metaTransport);
 
   const media = new MediaService(db, overrides.storage ?? new LocalMediaStorage(env.MEDIA_DIR), {
     maxImageBytes: env.MEDIA_MAX_IMAGE_MB * 1024 * 1024,
@@ -93,6 +98,12 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     },
     logger,
     knowledge,
+    () => {
+      if (env.WHATSAPP_CONTACT_LINK) return env.WHATSAPP_CONTACT_LINK;
+      const me = gateway?.isConnected() ? gateway.getStatus().me : null;
+      const number = me?.split('@')[0]?.split(':')[0];
+      return number ? `https://wa.me/${number}` : null;
+    },
   );
   const guard = new ReplyGuard(db, settings);
   const worker = new ReplyWorker(db, guard, ai, sender, handoff, settings, logger);
@@ -117,6 +128,7 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     audit,
     settings,
     transport,
+    metaTransport,
     gateway,
     sender,
     handoff,

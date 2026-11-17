@@ -353,18 +353,21 @@ export const TOOLS: ToolDef<z.ZodType>[] = [
 ];
 
 async function sendMediaTool(kind: 'IMAGE' | 'VIDEO', mediaId: string, caption: string | null, ctx: ToolContext, d: ToolDeps) {
+  const conv = await d.db.conversation.findUniqueOrThrow({ where: { id: ctx.conversationId }, include: { contact: true } });
+  if (conv.contact.channel !== 'WHATSAPP') {
+    throw new ToolInputError('en este canal no se mandan fotos ni videos: ofrecé verlos por WhatsApp');
+  }
   if (ctx.mediaSent >= MAX_MEDIA_PER_REPLY) throw new ToolInputError(`Ya enviaste ${MAX_MEDIA_PER_REPLY} archivos en esta respuesta`);
   const asset = await d.db.mediaAsset.findUnique({ where: { id: mediaId } });
   if (!asset || !asset.active) throw new ToolInputError('Ese archivo no existe o está desactivado. Buscá con search_media.');
   if (asset.kind !== kind) throw new ToolInputError(kind === 'IMAGE' ? 'Ese archivo es un video: usá send_video' : 'Ese archivo es una foto: usá send_image');
   // El backend vuelve a chequear el estado: si la dueña tomó la conversación, no se envía nada.
-  const conv = await d.db.conversation.findUniqueOrThrow({ where: { id: ctx.conversationId } });
   if (conv.status !== 'AI_ACTIVE') {
     ctx.handedOff = true;
     return { sent: false, note: 'La conversación ya está con la dueña' };
   }
   if (!(await d.settings.getAi()).enabled) return { sent: false, note: 'La IA está apagada: no envíes archivos' };
-  if (!d.sender.isReady()) throw new ToolInputError('WhatsApp no está conectado: no se puede enviar el archivo ahora');
+  if (!(await d.sender.isReady(ctx.conversationId))) throw new ToolInputError('WhatsApp no está conectado: no se puede enviar el archivo ahora');
   const msg = await d.sender.sendMedia({ conversationId: ctx.conversationId, mediaId, caption, author: 'AI', requireActive: true });
   if (msg.status === 'DISCARDED') {
     ctx.handedOff = true;

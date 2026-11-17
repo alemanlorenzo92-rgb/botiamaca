@@ -30,7 +30,6 @@ export class AutoFollowupService {
   ) {}
 
   async runOnce(now = new Date()): Promise<number> {
-    if (!this.sender.isReady()) return 0;
     const ai = await this.settings.getAi();
     if (!ai.enabled || !ai.followupAfterHours || !ai.followupMessage.trim()) return 0;
     if (!isFollowupWindow(now)) return 0;
@@ -39,13 +38,14 @@ export class AutoFollowupService {
     const candidates = await this.db.$queryRaw<{ id: string; lastInboundAt: Date; autoFollowupAt: Date | null }[]>`
       SELECT c.id, c.last_inbound_at AS "lastInboundAt", c.auto_followup_at AS "autoFollowupAt"
       FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
-      WHERE c.status = 'AI_ACTIVE' AND NOT ct.bot_muted AND c.last_inbound_at IS NOT NULL
+      WHERE c.status = 'AI_ACTIVE' AND ct.channel = 'WHATSAPP' AND NOT ct.bot_muted AND c.last_inbound_at IS NOT NULL
         AND c.last_outbound_at <= ${cutoff} AND c.last_outbound_at >= ${new Date(cutoff.getTime() - WINDOW_SLACK_MS)}
         AND (c.auto_followup_at IS NULL OR c.auto_followup_at < c.last_inbound_at)
       ORDER BY c.last_outbound_at
       LIMIT 50`;
     let sent = 0;
     for (const conv of candidates) {
+      if (!(await this.sender.isReady(conv.id))) continue;
       const lastInbound = conv.lastInboundAt;
       const last = await this.db.message.findFirst({
         where: { conversationId: conv.id, status: { in: ['RECEIVED', 'SENT'] } },

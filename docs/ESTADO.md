@@ -1,6 +1,6 @@
 # Estado del proyecto y cómo continuar
 
-Vendedora virtual por WhatsApp para **Male Style** (Río Cuarto, Córdoba): glitter, maquillaje artístico y
+Vendedora virtual por WhatsApp, Instagram Direct y Facebook Messenger para **Male Style** (Río Cuarto, Córdoba): glitter, maquillaje artístico y
 servicios para eventos (Glitter Bar y Shimmer Walls). La opera **una sola persona, la dueña**: no hay vendedores
 ni ayudantes. Todo lo del negocio se carga desde el panel (base de datos), no en el código.
 

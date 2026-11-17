@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { EventBus } from '../core/events.js';
 import { normalize } from '../core/text.js';
+import { channelOf } from '../meta/channel.js';
 import type { InboundWhatsAppMessage } from '../whatsapp/transport.js';
 import type { HandoffService } from './handoff.service.js';
 
@@ -54,6 +55,7 @@ export class ConversationService {
       return await this.db.contact.create({
         data: {
           waJid: msg.chatJid,
+          channel: channelOf(msg.chatJid),
           waAltJid: msg.altJid,
           phone,
           pushName: msg.fromMe ? null : msg.pushName,
@@ -68,7 +70,8 @@ export class ConversationService {
   }
 
   async ingest(msg: InboundWhatsAppMessage): Promise<IngestResult> {
-    if (!msg.chatJid.endsWith('@s.whatsapp.net') && !msg.chatJid.endsWith('@lid')) {
+    const channel = channelOf(msg.chatJid);
+    if (channel === 'WHATSAPP' && !msg.chatJid.endsWith('@s.whatsapp.net') && !msg.chatJid.endsWith('@lid')) {
       return { kind: 'ignored', reason: 'chat no individual' };
     }
     const already = await this.db.message.findUnique({ where: { externalId: msg.externalId } });

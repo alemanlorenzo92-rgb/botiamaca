@@ -55,7 +55,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
     return { status: this.status, qr: this.qrDataUrl, me: this.sock?.user?.id ?? null };
   }
 
-  isConnected(): boolean {
+  isConnected(_jid?: string): boolean {
     return this.status === 'CONNECTED' && !!this.sock;
   }
 
@@ -241,7 +241,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
 
 /** Transporte usado cuando WhatsApp está deshabilitado (desarrollo/pruebas). */
 export class DisabledTransport implements WhatsAppTransport {
-  isConnected() {
+  isConnected(_jid?: string) {
     return false;
   }
   async sendText(): Promise<{ externalId: string }> {

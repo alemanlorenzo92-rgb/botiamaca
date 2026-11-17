@@ -54,6 +54,8 @@ function formatJson(value: Prisma.JsonValue): string {
 export interface PromptInput {
   ai: AiSetting;
   contact: Contact;
+  channel: Contact['channel'];
+  whatsappLink: string | null;
   businessProfile: Prisma.JsonValue | null;
   configuredTopics: string[];
   now: Date;
@@ -62,7 +64,7 @@ export interface PromptInput {
   firstReply?: boolean;
 }
 
-export function buildInstructions({ ai, contact, businessProfile, configuredTopics, now, knowledge, firstReply }: PromptInput): string {
+export function buildInstructions({ ai, contact, channel, whatsappLink, businessProfile, configuredTopics, now, knowledge, firstReply }: PromptInput): string {
   const sections = [BASE_RULES];
   if (ai.personality.trim()) sections.push(`Personalidad:\n${ai.personality.trim()}`);
   if (ai.instructions.trim()) sections.push(`Instrucciones del negocio:\n${ai.instructions.trim()}`);
@@ -109,6 +111,13 @@ export function buildInstructions({ ai, contact, businessProfile, configuredTopi
   if (knowledge?.examples.length) {
     sections.push(
       `Ejemplos reales de cómo responde la dueña (imitá el tono, NO copies precios ni datos de estos ejemplos):\n${knowledge.examples.map((e) => e.text).join('\n---\n')}`,
+    );
+  }
+  if (channel !== 'WHATSAPP') {
+    const label = channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook';
+    const offer = whatsappLink ? `ofrecele el link de WhatsApp: ${whatsappLink}` : 'ofrecele seguir por WhatsApp';
+    sections.push(
+      `Estás respondiendo por ${label}. Tu objetivo principal es que la clienta siga la charla por WhatsApp, donde la atendemos mejor: respondé corto y cálido y ${offer}. Precios, pedidos y presupuestos preferimos verlos por WhatsApp. Si la clienta dice que prefiere seguir por acá, atendela por acá normalmente, con las reglas de siempre (precios, pedidos y herramientas incluidos), y no le vuelvas a insistir con WhatsApp.`,
     );
   }
   return sections.join('\n\n');

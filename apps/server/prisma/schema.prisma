@@ -66,10 +66,17 @@ enum BuyerType {
   EVENT
 }
 
+enum Channel {
+  WHATSAPP
+  INSTAGRAM
+  MESSENGER
+}
+
 model Contact {
   id               String    @id @default(uuid()) @db.Uuid
   /// JID de WhatsApp al que se responde (puede ser @s.whatsapp.net o @lid)
   waJid            String    @unique @map("wa_jid")
+  channel          Channel   @default(WHATSAPP)
   /// JID alternativo (número o LID) informado por WhatsApp
   waAltJid         String?   @map("wa_alt_jid")
   phone            String?

@@ -76,7 +76,10 @@ function ContactDetail({ id, onSaved }: { id: string; onSaved: () => void }) {
   return (
     <div className="card stack">
       <div className="row between">
-        <h2>{contactName(c)}</h2>
+        <div className="row">
+          <h2>{contactName(c)}</h2>
+          {c.channel !== 'WHATSAPP' && <span className="muted small">{c.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}</span>}
+        </div>
         {c.conversation && <Link href={`/inbox?c=${c.conversation.id}`}>Abrir chat</Link>}
       </div>
       <div className="muted small">{c.phone ?? c.waJid}</div>
@@ -206,7 +209,10 @@ function Contacts() {
           <tbody>
             {data?.contacts.map((c) => (
               <tr key={c.id} className={`clickable ${selected === c.id ? 'selected' : ''}`} onClick={() => setSelected(c.id)}>
-                <td>{contactName(c)}</td>
+                <td>
+                  {contactName(c)}
+                  {c.channel !== 'WHATSAPP' && <span className="muted small"> · {c.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}</span>}
+                </td>
                 <td>{c.phone ?? '—'}</td>
                 <td>{BUYER_TYPE[c.buyerType]}</td>
                 <td>{dateTime(c.lastMessageAt)}</td>

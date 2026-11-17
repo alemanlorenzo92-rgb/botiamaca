@@ -16,6 +16,7 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerEventsRoute } from './routes/events.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.js';
 import { registerSalesRoutes } from './routes/sales.js';
+import { registerMetaWebhook } from './routes/meta-webhook.js';
 
 export interface ServerOptions {
   /** Carpeta del panel exportado (Next.js `out`). */
@@ -67,6 +68,8 @@ export async function buildServer(c: Container, options: ServerOptions = {}): Pr
     await c.db.$queryRaw`SELECT 1`;
     return { ok: true, whatsapp: c.gateway?.getStatus().status ?? 'DISABLED' };
   });
+
+  await app.register(registerMetaWebhook(c));
 
   await app.register(
     async (api) => {

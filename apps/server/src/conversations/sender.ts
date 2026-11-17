@@ -131,14 +131,19 @@ export class MessageSender {
         return saved;
       } catch (error) {
         lastError = error;
-        if (error instanceof WhatsAppNotConnectedError || !this.transport.isConnected()) break;
+        if (error instanceof WhatsAppNotConnectedError || !this.transport.isConnected(conversation.contact.waJid)) break;
       }
     }
     return fail(lastError instanceof Error ? lastError.message : String(lastError));
   }
 
-  isReady(): boolean {
-    return this.transport.isConnected();
+  async isReady(conversationId?: string): Promise<boolean> {
+    if (!conversationId) return this.transport.isConnected();
+    const conversation = await this.db.conversation.findUnique({
+      where: { id: conversationId },
+      select: { contact: { select: { waJid: true } } },
+    });
+    return !!conversation && this.transport.isConnected(conversation.contact.waJid);
   }
 
   /** Registra una respuesta automática que el backend bloqueó (no se envía). */

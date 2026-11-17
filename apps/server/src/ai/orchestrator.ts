@@ -107,6 +107,7 @@ export class AiOrchestrator implements AiResponder {
     private readonly config: OrchestratorConfig,
     private readonly logger: Logger,
     private readonly knowledge: KnowledgeService | null = null,
+    private readonly whatsappLink: () => string | null = () => null,
   ) {}
 
   private async retrieve(recent: Message[], toolLog: ToolLog[]): Promise<RetrievedKnowledge | null> {
@@ -175,6 +176,8 @@ export class AiOrchestrator implements AiResponder {
       const instructions = buildInstructions({
         ai,
         contact: ctx.contact,
+        channel: conversation.contact.channel,
+        whatsappLink: this.whatsappLink(),
         businessProfile: business.business_profile ?? null,
         configuredTopics: BUSINESS_SETTING_KEYS.filter((k) => business[k] !== undefined && business[k] !== null),
         now: new Date(),

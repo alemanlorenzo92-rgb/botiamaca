@@ -99,6 +99,8 @@ interface AiSettings {
   dailyTokenBudget: number | null;
   debounceSeconds: number;
   historyMessages: number;
+  followupAfterHours: number | null;
+  followupMessage: string;
 }
 
 function AiSettingsForm() {
@@ -158,6 +160,8 @@ function AiSettingsForm() {
           dailyTokenBudget: form.dailyTokenBudget,
           debounceSeconds: form.debounceSeconds,
           historyMessages: form.historyMessages,
+          followupAfterHours: form.followupAfterHours || null,
+          followupMessage: form.followupMessage,
         },
       });
       setMsg('Guardado');
@@ -179,6 +183,7 @@ function AiSettingsForm() {
       {text('handoffMessage', 'Mensaje al pasar con una persona')}
       {text('errorMessage', 'Mensaje si la IA falla')}
       {text('outsideHoursMessage', 'Mensaje fuera de horario (opcional)')}
+      {text('followupMessage', 'Mensaje de seguimiento si la clienta no responde (sin precios)')}
       <label>
         Horario de atención humana (JSON, vacío = sin horario)
         <textarea
@@ -193,6 +198,7 @@ function AiSettingsForm() {
         {num('dailyTokenBudget', 'Presupuesto diario de tokens (vacío = sin límite)')}
         {num('debounceSeconds', 'Espera antes de responder (segundos)')}
         {num('historyMessages', 'Mensajes de historial que lee la IA')}
+        {num('followupAfterHours', 'Seguimiento automático: horas sin respuesta (vacío = apagado)')}
       </div>
       <div className="row">
         <button className="primary" onClick={save}>

@@ -8,6 +8,7 @@ import { ConversationService } from './conversations/conversation.service.js';
 import { HandoffService } from './conversations/handoff.service.js';
 import { ReplyGuard } from './conversations/reply-guard.js';
 import { ReplyWorker } from './conversations/reply-worker.js';
+import { AutoFollowupService } from './conversations/auto-followup.js';
 import { MessageSender } from './conversations/sender.js';
 import { AuditService } from './core/audit.js';
 import { Cipher } from './core/crypto.js';
@@ -95,6 +96,7 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   );
   const guard = new ReplyGuard(db, settings);
   const worker = new ReplyWorker(db, guard, ai, sender, handoff, settings, logger);
+  const autoFollowups = new AutoFollowupService(db, settings, sender, logger);
   onHistory = (msgs, owner) => chatImport.importHistory(msgs, owner);
   onConnected = () => {
     void worker.recoverPending().catch((err: unknown) => logger.error({ err }, 'no se pudieron retomar respuestas pendientes'));
@@ -129,6 +131,7 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
     cart,
     leads,
     followups,
+    autoFollowups,
     ai,
     guard,
     worker,

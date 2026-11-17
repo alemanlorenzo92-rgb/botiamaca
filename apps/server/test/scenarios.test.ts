@@ -300,3 +300,28 @@ describe('casos de borde', () => {
     expect(isWithinBusinessHours({ timezone: 'Nope/Nada', days: hours.days }, new Date())).toBeNull();
   });
 });
+
+describe('proceso de venta de la dueña', () => {
+  it('primera respuesta sin precios; desde la segunda ya puede darlos', async () => {
+    const { c, llm } = createTestContainer();
+    llm.push(textReply('¡Hola! ¿Qué producto te interesó?'), textReply('El plateado sale $3.500'));
+    await customerSays(c, 'Hola, precio del glitter?');
+    await customerSays(c, 'El plateado');
+    expect(String(llm.calls[0]!.instructions)).toContain('primera respuesta en esta conversación');
+    expect(String(llm.calls[1]!.instructions)).not.toContain('primera respuesta en esta conversación');
+  });
+
+  it('seguimiento automático: uno solo si la clienta no responde, y ninguno si respondió', async () => {
+    const { c, llm, transport } = createTestContainer();
+    llm.push(textReply('¡Hola! ¿Qué producto te interesó?'));
+    await customerSays(c, 'Hola, info?');
+    const id = (await conversation()).id;
+    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    expect(await c.autoFollowups.runOnce(new Date(Date.now() + 60 * 60 * 1000))).toBe(0);
+    expect(await c.autoFollowups.runOnce(later)).toBe(1);
+    expect(transport.sent.at(-1)!.text).toContain('Pudiste ver');
+    expect(await c.autoFollowups.runOnce(new Date(later.getTime() + 48 * 60 * 60 * 1000))).toBe(0);
+    const msgs = await db.message.count({ where: { conversationId: id, author: 'AI' } });
+    expect(msgs).toBe(2);
+  });
+});

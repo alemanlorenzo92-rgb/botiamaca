@@ -26,6 +26,7 @@ async function start() {
   if (recovered) logger.info({ recovered }, 'respuestas pendientes recuperadas');
 
   c.followups.startScheduler();
+  c.autoFollowups.startScheduler();
   c.jobs.start();
 
   timers.push(
@@ -40,6 +41,7 @@ async function start() {
     timers.forEach(clearInterval);
     c.worker.stop();
     c.followups.stop();
+    c.autoFollowups.stop();
     await c.jobs.stop().catch(() => {});
     await app.close().catch(() => {});
     await c.worker.drain().catch(() => {});

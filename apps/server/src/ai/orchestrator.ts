@@ -179,6 +179,7 @@ export class AiOrchestrator implements AiResponder {
         configuredTopics: BUSINESS_SETTING_KEYS.filter((k) => business[k] !== undefined && business[k] !== null),
         now: new Date(),
         knowledge: await this.retrieve(recent, toolLog),
+        firstReply: isFirstReply(recent),
       });
       const input = historyToInput(recent.reverse());
       if (!input.length) {
@@ -270,4 +271,10 @@ export class AiOrchestrator implements AiResponder {
       throw error;
     }
   }
+}
+
+/** Si la tienda nunca respondió (o la última respuesta tiene más de 3 días), la clienta recién llega o vuelve. */
+export function isFirstReply(recent: { direction: string; author: string; createdAt: Date }[], now = Date.now()): boolean {
+  const last = recent.find((m) => m.direction === 'OUTBOUND' && (m.author === 'AI' || m.author === 'HUMAN'));
+  return !last || now - last.createdAt.getTime() > 3 * 24 * 60 * 60 * 1000;
 }

@@ -22,7 +22,7 @@ export interface ServerOptions {
 }
 
 export async function buildServer(c: Container, options: ServerOptions = {}): Promise<FastifyInstance> {
-  const app = Fastify({ loggerInstance: c.logger as FastifyBaseLogger, trustProxy: true, bodyLimit: 1024 * 1024 });
+  const app = Fastify({ loggerInstance: c.logger as FastifyBaseLogger, trustProxy: c.env.TRUST_PROXY as boolean /* también acepta cantidad de saltos */, bodyLimit: 1024 * 1024 });
   const publicUrl = new URL(c.env.PUBLIC_URL);
 
   await app.register(helmet, {

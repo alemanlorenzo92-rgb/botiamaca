@@ -14,6 +14,12 @@ const schema = z.object({
     .string()
     .refine((v) => Buffer.from(v, 'base64').length === 32, 'ENCRYPTION_KEY debe ser 32 bytes en base64'),
   LOG_LEVEL: z.string().default('info'),
+  /** Detrás de un proxy reverso: 'true' o la cantidad de saltos. Si el puerto es público, dejar 'false'. */
+  TRUST_PROXY: z
+    .string()
+    .default('false')
+    .transform((v) => (v === 'true' ? true : v === 'false' ? false : Number(v)))
+    .refine((v) => typeof v === 'boolean' || (Number.isInteger(v) && v >= 0), 'TRUST_PROXY debe ser true, false o un número'),
   WHATSAPP_ENABLED: bool,
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-5-mini'),

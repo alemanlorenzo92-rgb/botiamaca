@@ -166,6 +166,7 @@ export class KnowledgeService {
 
   /** Intercambios cliente → dueña como ejemplos de tono (solo se recuperan los más parecidos a la consulta). */
   private async buildExamples(chatId: string, messages: { fromOwner: boolean; text: string }[]) {
+    const active = !(await this.db.knowledgeChunk.count({ where: { chatId, kind: 'EXAMPLE', active: false } }));
     await this.db.knowledgeChunk.deleteMany({ where: { chatId, kind: 'EXAMPLE' } });
     const pairs: string[] = [];
     for (let i = 0; i < messages.length && pairs.length < MAX_EXAMPLES_PER_CHAT; ) {
@@ -181,7 +182,7 @@ export class KnowledgeService {
       const batch = pairs.slice(i, i + 64);
       const vectors = await this.embedder.embed(batch);
       for (const [j, text] of batch.entries()) {
-        const chunk = await this.db.knowledgeChunk.create({ data: { kind: 'EXAMPLE', chatId, text, active: true } });
+        const chunk = await this.db.knowledgeChunk.create({ data: { kind: 'EXAMPLE', chatId, text, active } });
         await this.setEmbedding(chunk.id, vectors[j]!);
       }
     }

@@ -15,7 +15,10 @@ import type { InboundWhatsAppMessage, OutboundMedia, WhatsAppTransport } from '.
 
 const url = process.env.SMOKE_DATABASE_URL;
 if (!url || !process.env.OPENAI_API_KEY) throw new Error('Faltan SMOKE_DATABASE_URL y/o OPENAI_API_KEY');
-if (url === process.env.DATABASE_URL) throw new Error('SMOKE_DATABASE_URL tiene que ser una base de prueba distinta de DATABASE_URL');
+const dbName = (u: string) => new URL(u).pathname.replace(/^\//, '');
+if (!/smoke|test/i.test(dbName(url)) || (process.env.DATABASE_URL && dbName(process.env.DATABASE_URL) === dbName(url))) {
+  throw new Error('SMOKE_DATABASE_URL tiene que apuntar a una base de prueba (nombre con "smoke" o "test") distinta de DATABASE_URL: se borra entera');
+}
 
 class RecordingTransport implements WhatsAppTransport {
   sent: string[] = [];

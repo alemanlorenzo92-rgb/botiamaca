@@ -96,6 +96,7 @@ interface AiSettings {
   handoffMessage: string;
   errorMessage: string;
   outsideHoursMessage: string | null;
+  businessHours: unknown;
   maxRepliesPerHour: number;
   dailyTokenBudget: number | null;
   debounceSeconds: number;
@@ -105,9 +106,13 @@ interface AiSettings {
 function AiSettingsForm() {
   const { data, reload } = useData<{ ai: AiSettings }>('/settings/ai');
   const [form, setForm] = useState<AiSettings | null>(null);
+  const [hours, setHours] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => {
-    if (data) setForm(data.ai);
+    if (data) {
+      setForm(data.ai);
+      setHours(toText(data.ai.businessHours));
+    }
   }, [data]);
   if (!form) return <p className="muted">Cargando…</p>;
 
@@ -130,6 +135,15 @@ function AiSettingsForm() {
 
   const save = async () => {
     setMsg(null);
+    let businessHours: unknown = null;
+    if (hours.trim()) {
+      try {
+        businessHours = JSON.parse(hours);
+      } catch {
+        setMsg('El horario no es JSON válido');
+        return;
+      }
+    }
     try {
       await api('/settings/ai', {
         method: 'PUT',
@@ -141,6 +155,7 @@ function AiSettingsForm() {
           handoffMessage: form.handoffMessage,
           errorMessage: form.errorMessage,
           outsideHoursMessage: form.outsideHoursMessage || null,
+          businessHours,
           maxRepliesPerHour: form.maxRepliesPerHour,
           dailyTokenBudget: form.dailyTokenBudget,
           debounceSeconds: form.debounceSeconds,
@@ -166,6 +181,15 @@ function AiSettingsForm() {
       {text('handoffMessage', 'Mensaje al pasar con una persona')}
       {text('errorMessage', 'Mensaje si la IA falla')}
       {text('outsideHoursMessage', 'Mensaje fuera de horario (opcional)')}
+      <label>
+        Horario de atención humana (JSON, vacío = sin horario)
+        <textarea
+          rows={4}
+          placeholder={'{"days": {"mon": [["09:00", "18:00"]], "sat": [["10:00", "13:00"]]}}'}
+          value={hours}
+          onChange={(e) => setHours(e.target.value)}
+        />
+      </label>
       <div className="grid2">
         {num('maxRepliesPerHour', 'Máx. respuestas por hora y cliente')}
         {num('dailyTokenBudget', 'Presupuesto diario de tokens (vacío = sin límite)')}

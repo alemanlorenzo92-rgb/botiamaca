@@ -1,3 +1,4 @@
+import { isWithinBusinessHours } from '../core/hours.js';
 import type { ActorType, AssignmentAction, ConversationStatus, PrismaClient } from '@prisma/client';
 import type { AuditService } from '../core/audit.js';
 import type { EventBus } from '../core/events.js';
@@ -96,7 +97,8 @@ export class HandoffService {
     );
     this.bus.publish({ type: 'human.requested', conversationId, reason });
     const ai = await this.settings.getAi();
-    await this.sender.sendText({ conversationId, text: message ?? ai.handoffMessage, author: 'SYSTEM' });
+    const outside = isWithinBusinessHours(ai.businessHours, new Date()) === false && ai.outsideHoursMessage?.trim();
+    await this.sender.sendText({ conversationId, text: message ?? (outside ? ai.outsideHoursMessage! : ai.handoffMessage), author: 'SYSTEM' });
     return conversation;
   }
 

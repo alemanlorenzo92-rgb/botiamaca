@@ -1,6 +1,7 @@
+import { DEFAULT_TIME_ZONE, isWithinBusinessHours } from '../core/hours.js';
 import type { AiSetting, Contact, Prisma } from '@prisma/client';
 
-export const TIME_ZONE = 'America/Argentina/Cordoba';
+export const TIME_ZONE = DEFAULT_TIME_ZONE;
 
 const BUYER_LABEL: Record<Contact['buyerType'], string> = {
   UNKNOWN: 'todavía no se sabe (si importa para el precio, preguntá si compra para uso propio o para revender)',
@@ -56,6 +57,17 @@ export function buildInstructions({ ai, contact, businessProfile, configuredTopi
     timeStyle: 'short',
   }).format(now);
   sections.push(`Fecha y hora actual: ${date} (hora de Argentina, UTC-03:00).`);
+
+  if (ai.greeting?.trim()) {
+    sections.push(`Saludo: si es el primer mensaje del cliente en esta conversación, saludá con este texto (podés adaptarlo apenas):\n${ai.greeting.trim()}`);
+  }
+  if (isWithinBusinessHours(ai.businessHours, now) === false) {
+    sections.push(
+      ai.outsideHoursMessage?.trim()
+        ? `Ahora el equipo está fuera del horario de atención. Si el cliente pide una persona o hay que derivar, avisale: ${ai.outsideHoursMessage.trim()}`
+        : 'Ahora el equipo está fuera del horario de atención. Si derivás, aclarale que le responden en el próximo horario de atención.',
+    );
+  }
 
   const profile = [
     `- Nombre: ${contact.name ?? contact.pushName ?? 'sin dato'}`,

@@ -41,7 +41,8 @@ const ask = async (text: string) => {
 };
 
 try {
-  await db.aiSetting.upsert({ where: { id: 1 }, create: { id: 1, debounceSeconds: 0 }, update: { debounceSeconds: 0, enabled: true } });
+  execFileSync('npx', ['tsx', 'src/cli.ts', 'seed'], { env: { ...process.env, DATABASE_URL: url }, stdio: 'inherit' });
+  await db.aiSetting.update({ where: { id: 1 }, data: { debounceSeconds: 0, enabled: true } });
   const chat = [
     '10/11/2026, 09:00 - Male Style: Hola! Gracias por escribir a Male Style 💖',
     '10/11/2026, 09:01 - Juana Pérez: Hola! Cuál es el mínimo para comprar por mayor?',

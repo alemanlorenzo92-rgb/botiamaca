@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { isWithinBusinessHours } from '../src/core/hours.js';
 import { shouldHandleUpsert } from '../src/whatsapp/gateway.js';
 import {
   APP_SECRET,
@@ -257,5 +258,72 @@ describe('robustez', () => {
     expect(instructions).toContain('Villa María');
     expect(instructions).toMatch(/WHOLESALE|mayorista/i);
     expect(JSON.stringify(llm.calls[0]!.input)).toContain('después te escribo');
+  });
+});
+
+describe('casos de borde', () => {
+  it('sin WhatsApp conectado no se pierden mensajes: se responden al reconectar', async () => {
+    const { c, llm, transport } = createTestContainer();
+    transport.connected = false;
+    await customerSays(c, '¿Tenés talle L?');
+    expect(llm.calls).toHaveLength(0);
+    expect(await db.message.count({ where: { direction: 'INBOUND', aiHandledAt: null } })).toBe(1);
+
+    transport.connected = true;
+    llm.push(textReply('Sí, tengo L.'));
+    await c.worker.recoverPending();
+    await new Promise((r) => setTimeout(r, 50));
+    await c.worker.drain();
+    expect(transport.sent.map((s) => s.text)).toEqual(['Sí, tengo L.']);
+    c.worker.stop();
+  });
+
+  it('tras request_human no se ejecutan otras herramientas del mismo lote', async () => {
+    const { c, llm } = createTestContainer();
+    llm.push(toolCalls(['request_human', { reason: 'Reclamo por un pedido' }], ['view_cart', {}]));
+    await customerSays(c, 'Tengo un reclamo');
+    const run = await db.aiRun.findFirstOrThrow();
+    expect((run.toolCalls as { name: string }[]).map((t) => t.name)).toEqual(['request_human']);
+  });
+
+  it('request_human no pisa una conversación que el equipo ya pausó', async () => {
+    const { c, llm, transport } = createTestContainer();
+    llm.push(async () => {
+      const conv = await conversation();
+      await db.conversation.update({ where: { id: conv.id }, data: { status: 'AI_PAUSED' } });
+      return toolCalls(['request_human', { reason: 'No sé' }]);
+    });
+    await customerSays(c, 'Hola');
+    expect((await conversation()).status).toBe('AI_PAUSED');
+    expect(transport.sent).toHaveLength(0);
+  });
+
+  it('webhook: el mismo aviso después de procesado se vuelve a consultar', async () => {
+    const tnProduct = {
+      id: 77, name: { es: 'Media' }, description: { es: '' }, handle: { es: 'media' }, published: true, free_shipping: false,
+      tags: '', brand: null, images: [], categories: [], attributes: [], updated_at: new Date().toISOString(),
+      variants: [{ id: 7701, product_id: 77, price: '3000.00', promotional_price: null, stock_management: true, stock: 5, sku: 'M1', values: [] }],
+    };
+    let stock = 5;
+    const { c } = createTestContainer({
+      routes: (url) => (url.endsWith('/products/77') ? { status: 200, body: { ...tnProduct, variants: [{ ...tnProduct.variants[0], stock }] } } : undefined),
+    });
+    const body = Buffer.from(JSON.stringify({ store_id: 999, event: 'product/updated', id: 77 }));
+    const sig = createHmac('sha256', APP_SECRET).update(body).digest('hex');
+    const first = await c.webhooks.receive(body, sig);
+    if (first.status === 'accepted') await c.webhooks.process(first.eventId);
+    stock = 2;
+    const second = await c.webhooks.receive(body, sig);
+    expect(second.status).toBe('accepted');
+    if (second.status === 'accepted') await c.webhooks.process(second.eventId);
+    expect((await db.inventory.findFirstOrThrow()).quantity).toBe(2);
+  });
+
+  it('horario de atención', () => {
+    const hours = { days: { mon: [['09:00', '18:00']] } };
+    expect(isWithinBusinessHours(hours, new Date('2026-11-16T15:00:00-03:00'))).toBe(true);
+    expect(isWithinBusinessHours(hours, new Date('2026-11-16T20:00:00-03:00'))).toBe(false);
+    expect(isWithinBusinessHours(hours, new Date('2026-11-15T12:00:00-03:00'))).toBe(false);
+    expect(isWithinBusinessHours(null, new Date())).toBeNull();
   });
 });

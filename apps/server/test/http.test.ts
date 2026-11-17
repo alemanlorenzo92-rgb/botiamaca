@@ -51,6 +51,8 @@ describe('API del panel', () => {
     expect(await c.settings.getBusiness('shipping_policy')).toBe('Envíos por Andreani');
     await app.inject({ method: 'PUT', url: '/api/settings/business/shipping_policy', headers: { cookie }, payload: { value: null } });
     expect(await c.settings.getBusiness('shipping_policy')).toBeNull();
+    const nested = await app.inject({ method: 'PUT', url: '/api/settings/business/faq', headers: { cookie }, payload: { value: { cambios: null, items: ['a', null] } } });
+    expect(nested.statusCode).toBe(200);
   });
 
   it('responder desde el panel toma la conversación', async () => {

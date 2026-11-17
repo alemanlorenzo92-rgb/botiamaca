@@ -6,9 +6,16 @@ import { BUSINESS_SETTING_KEYS } from '../../core/settings.js';
 import { HttpError, requirePermission, requireUser } from '../auth.js';
 import { parse } from '../validate.js';
 
-const jsonValue: z.ZodType<Prisma.InputJsonValue> = z.lazy(() =>
-  z.union([z.string(), z.number(), z.boolean(), z.array(jsonValue), z.record(z.string(), jsonValue)]),
+const jsonNested: z.ZodType<Prisma.InputJsonValue | null> = z.lazy(() =>
+  z.union([z.null(), z.string(), z.number(), z.boolean(), z.array(jsonNested), z.record(z.string(), jsonNested)]),
 );
+const jsonValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(jsonNested),
+  z.record(z.string(), jsonNested),
+]) as z.ZodType<Prisma.InputJsonValue>;
 
 const businessHours = z
   .object({

@@ -62,8 +62,12 @@ function escape(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** El nombre del negocio no es un dato personal: no se reemplaza aunque la dueña tenga agendado ese nombre en WhatsApp. */
+export const BUSINESS_NAME = 'Male Style';
+
 export function anonymize(text: string, names: Map<string, string> = new Map()): string {
-  let out = text;
+  const kept: string[] = [];
+  let out = text.replace(new RegExp(`(?<![\\p{L}])${escape(BUSINESS_NAME)}(?![\\p{L}])`, 'giu'), (m) => `\uE000${kept.push(m) - 1}\uE000`);
   for (const [re, label] of RULES) out = typeof label === 'string' ? out.replace(re, label) : out.replace(re, label);
   // Nombres de participantes (completos y primer nombre) por su alias.
   for (const [name, alias] of names) {
@@ -75,5 +79,5 @@ export function anonymize(text: string, names: Map<string, string> = new Map()):
   }
   // Nombres de terceros mencionados en el texto (hija, amiga, quien retira…), sin tocar el resto de la frase.
   for (const re of NAME_CONTEXTS) out = out.replace(re, (m: string, ...g: string[]) => m.slice(0, m.length - g[2]!.length) + redactName(g[2]!));
-  return out;
+  return out.replace(/\uE000(\d+)\uE000/g, (_, i: string) => kept[Number(i)]!);
 }

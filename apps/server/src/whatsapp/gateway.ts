@@ -19,6 +19,8 @@ export type WhatsAppStatus = 'DISABLED' | 'DISCONNECTED' | 'CONNECTING' | 'QR' |
 
 const MAX_BACKOFF_MS = 60_000;
 const APPEND_MAX_AGE_MS = 10 * 60 * 1000;
+/** WhatsApp manda el historial en varias tandas: se junta todo y se procesa cuando dejan de llegar. */
+const HISTORY_QUIET_MS = 30_000;
 
 /** Tras reconectar, Baileys reenvía historial ("append"): solo se procesa lo reciente. */
 export function shouldHandleUpsert(type: string, timestamp: Date, now = Date.now()): boolean {
@@ -35,6 +37,8 @@ export class WhatsAppGateway implements WhatsAppTransport {
   private attempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private stopping = false;
+  private historyBuffer: InboundWhatsAppMessage[] = [];
+  private historyTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly db: PrismaClient,
@@ -140,9 +144,18 @@ export class WhatsAppGateway implements WhatsAppTransport {
 
     // Historial que WhatsApp manda al vincular: no se responde, solo se usa para aprender.
     sock.ev.on('messaging-history.set', ({ messages }) => {
-      const mapped = messages.map(mapWAMessage).filter((m): m is InboundWhatsAppMessage => m !== null);
-      if (!mapped.length) return;
-      void this.onHistory(mapped, sock.user?.name ?? null).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
+      for (const raw of messages) {
+        const mapped = mapWAMessage(raw);
+        if (mapped) this.historyBuffer.push(mapped);
+      }
+      if (this.historyTimer) clearTimeout(this.historyTimer);
+      this.historyTimer = setTimeout(() => {
+        this.historyTimer = null;
+        const batch = this.historyBuffer;
+        this.historyBuffer = [];
+        if (!batch.length) return;
+        void this.onHistory(batch, sock.user?.name ?? null).catch((error: unknown) => this.logger.error({ err: error }, 'no se pudo procesar el historial'));
+      }, HISTORY_QUIET_MS);
     });
 
     sock.ev.on('messages.upsert', ({ messages, type }) => {
@@ -206,6 +219,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
   }
 
   async stop(): Promise<void> {
+    if (this.historyTimer) clearTimeout(this.historyTimer);
     this.stopping = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.sock?.end(undefined);

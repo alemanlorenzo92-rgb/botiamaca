@@ -2,7 +2,7 @@
 const STREET = String.raw`(?:calle|av(?:enida|da)?\.?|bv\.?|bulevar|boulevard|pasaje|psje\.?|diagonal|camino)`;
 /** Después de "envialo a / entrega en" hay dirección si aparece palabra + número que no sea plazo, cantidad ni monto. */
 const STREET_NUMBER =
-  /\p{L}{3,}\.?\s+(?:n[°º.]?\s*)?\d{1,5}(?!\d|\s*(?:d[ií]as?|hs?|horas?|semanas?|mes(?:es)?|minutos?|min|unidades?|u|personas?|%)(?!\p{L}))/iu;
+  /\p{L}{3,}\.?\s+(?:al\s+)?(?:n[°º.]?\s*)?\d{1,5}(?!\d|\s*(?:d[ií]as?|hs?|horas?|semanas?|mes(?:es)?|minutos?|min|unidades?|u|personas?|%)(?!\p{L}))/iu;
 const addressAfter = (m: string, lead: string, sep: string, rest: string) =>
   STREET_NUMBER.test(rest) ? `${lead}${sep}[dirección]` : m;
 

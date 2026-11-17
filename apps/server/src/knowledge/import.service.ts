@@ -13,6 +13,8 @@ export const OWNER_ALIAS = 'Dueña';
 /** Del historial que manda WhatsApp al vincular se usan hasta 5000 mensajes por chat (la extracción los parte en tramos). */
 const HISTORY_MAX_MESSAGES = 5000;
 const HISTORY_MIN_MESSAGES = 4;
+/** Solo el último año: antes la tienda vendía otros productos. */
+const HISTORY_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
 export class ImportError extends Error {
   constructor(
@@ -134,8 +136,9 @@ export class ChatImportService {
    */
   async importHistory(messages: InboundWhatsAppMessage[], ownerName: string | null = null) {
     const byChat = new Map<string, InboundWhatsAppMessage[]>();
+    const since = Date.now() - HISTORY_MAX_AGE_MS;
     for (const m of messages) {
-      if (m.type !== 'TEXT' || !m.text?.trim()) continue;
+      if (m.type !== 'TEXT' || !m.text?.trim() || m.timestamp.getTime() < since) continue;
       // El mismo chat puede llegar como número o como LID: se agrupa por el número cuando WhatsApp lo informa.
       const key = m.chatJid.endsWith('@lid') && m.altJid?.endsWith('@s.whatsapp.net') ? m.altJid : m.chatJid;
       const list = byChat.get(key) ?? [];

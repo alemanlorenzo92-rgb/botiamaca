@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { Container } from '../../container.js';
-import { requireUser } from '../auth.js';
+import { can, requireUser } from '../auth.js';
 
 /** Resumen para la pantalla de inicio de la dueña. */
 export function registerDashboardRoutes(c: Container) {
   return async (app: FastifyInstance) => {
     app.get('/dashboard', async (request) => {
-      requireUser(request);
+      const user = requireUser(request);
+      const knowledgeOk = can(user, 'knowledge');
+      const auditOk = can(user, 'audit');
       const since = new Date(Date.now() - 24 * 3600_000);
       const [conversations, orders, leads, followupsDue, knowledge, products, media, imports, aiRuns] = await Promise.all([
         c.db.conversation.groupBy({ by: ['status'], _count: true }),
@@ -26,11 +28,11 @@ export function registerDashboardRoutes(c: Container) {
         orders: map(orders, 'status'),
         leads: map(leads, 'status'),
         followupsDue,
-        knowledge: map(knowledge, 'status'),
+        knowledge: knowledgeOk ? map(knowledge, 'status') : {},
         products,
         media: map(media, 'active'),
-        imports: map(imports, 'status'),
-        aiRuns24h: map(aiRuns, 'status'),
+        imports: knowledgeOk ? map(imports, 'status') : {},
+        aiRuns24h: auditOk ? map(aiRuns, 'status') : {},
         whatsapp: c.gateway?.getStatus().status ?? 'DISABLED',
         openai: Boolean(c.env.OPENAI_API_KEY),
       };

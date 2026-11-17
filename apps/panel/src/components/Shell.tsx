@@ -92,6 +92,8 @@ export function Shell({ children }: { children: ReactNode }) {
 
   if (!value) return <div className="center muted">Cargando…</div>;
 
+  const required = NAV.find((n) => pathname?.startsWith(n.href))?.permission;
+
   const logout = async () => {
     await api('/auth/logout', { method: 'POST', body: {} });
     window.location.href = '/login';
@@ -122,7 +124,9 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </aside>
-        <main className="main">{children}</main>
+        <main className="main">
+          {required && !value.can(required) ? <p className="muted">No tenés acceso a esta sección.</p> : children}
+        </main>
       </div>
     </SessionContext.Provider>
   );

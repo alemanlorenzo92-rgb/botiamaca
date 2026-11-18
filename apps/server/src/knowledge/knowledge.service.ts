@@ -173,6 +173,7 @@ export class KnowledgeService {
     schema: Record<string, unknown>,
     parser: z.ZodType<T>,
     maxOutputTokens = 4000,
+    timeoutMs?: number,
   ): Promise<T> {
     if (!this.llm) throw new Error('Falta OPENAI_API_KEY: no se puede extraer conocimiento');
     const res = await this.llm.create(
@@ -186,7 +187,7 @@ export class KnowledgeService {
         // Sin esto gpt-5 razona en "medium" y cada tramo tarda tanto que se corta por tiempo.
         ...(/^(gpt-5|o\d)/.test(this.cfg.model) ? { reasoning: { effort: 'low' as const } } : {}),
       },
-      { signal: AbortSignal.timeout(this.cfg.timeoutMs ?? 120_000) },
+      { signal: AbortSignal.timeout(timeoutMs ?? this.cfg.timeoutMs ?? 120_000) },
     );
     return parser.parse(JSON.parse(outputText(res)));
   }
@@ -241,7 +242,7 @@ export class KnowledgeService {
     const documents = await this.db.knowledgeDocument.findMany({
       where,
       orderBy: [{ title: 'asc' }, { id: 'asc' }],
-      take: 120,
+      take: 60,
       select: { id: true, title: true, content: true },
     });
     if (documents.length < 2) {
@@ -264,6 +265,7 @@ export class KnowledgeService {
       CONSOLIDATE_JSON,
       consolidateSchema,
       12_000,
+      300_000,
     );
 
     const assigned = new Set<string>();
@@ -352,7 +354,7 @@ export class KnowledgeService {
       let pending = await this.db.knowledgeDocument.count({ where: { kind, status: 'PENDING' } });
       let reductionForKind = 0;
       let rounds = 0;
-      while (pending > 20 && rounds < 5) {
+      while (pending > 20 && rounds < 10) {
         rounds++;
         const reduction = await this.consolidate(kind);
         reductionForKind += reduction;

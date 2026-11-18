@@ -176,7 +176,9 @@ function ChatView({ id }: { id: string }) {
       <div className="messages">
         {messages.map((m) => (
           <div key={m.id} className={`bubble ${m.author} ${m.status}`}>
-            {m.text ?? <em className="muted">[{m.type}]</em>}
+            {m.type === 'AUDIO' && m.text ? (
+              <><em className="muted">🎤 Audio (transcripción):</em> {m.text}</>
+            ) : m.text ?? <em className="muted">[{m.type}]</em>}
             <div className="meta">
               {AUTHOR[m.author]}
               {m.sentByUser ? ` (${m.sentByUser.name})` : ''} · {dateTime(m.createdAt)}

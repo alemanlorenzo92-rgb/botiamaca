@@ -31,6 +31,7 @@ const schema = z.object({
   OPENAI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(800),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  OPENAI_TRANSCRIBE_MODEL: z.string().default('gpt-4o-mini-transcribe'),
   /// Carpeta de la biblioteca multimedia (en producción, un volumen persistente)
   MEDIA_DIR: z.string().default('./data/media'),
   MEDIA_MAX_IMAGE_MB: z.coerce.number().positive().default(10),

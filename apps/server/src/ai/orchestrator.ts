@@ -72,7 +72,10 @@ export function historyToInput(messages: Message[]): ResponseInputItem[] {
   const items: ResponseInputItem[] = [];
   for (const m of messages) {
     const media = MEDIA_LABEL[m.type];
-    const body = [media ? `[Envió ${media}]` : null, m.text?.trim() || null].filter(Boolean).join(' ');
+    const audioText = m.type === 'AUDIO' ? m.text?.trim() : null;
+    const body = audioText
+      ? `[Envió un audio; transcripción automática] ${audioText}`
+      : [media ? `[Envió ${media}]` : null, m.text?.trim() || null].filter(Boolean).join(' ');
     if (!body) continue;
     if (m.author === 'CUSTOMER') items.push({ role: 'user', content: body });
     else if (m.author === 'HUMAN') items.push({ role: 'assistant', content: `[Respondió la dueña] ${body}` });

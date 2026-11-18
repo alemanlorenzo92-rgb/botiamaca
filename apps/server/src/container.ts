@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
 import { AiOrchestrator, openAiLlm, type LlmClient } from './ai/orchestrator.js';
+import { OpenAiTranscriber } from './ai/transcriber.js';
 import { CatalogAdminService } from './catalog/catalog-admin.service.js';
 import { CatalogService } from './catalog/catalog.service.js';
 import { ServicesService } from './catalog/services.service.js';
@@ -48,13 +49,15 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const cipher = new Cipher(env.ENCRYPTION_KEY);
   const audit = new AuditService(db);
   const settings = new SettingsService(db);
+  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 2, timeout: env.OPENAI_TIMEOUT_MS }) : null;
+  const transcriber = openai ? new OpenAiTranscriber(openai, env.OPENAI_TRANSCRIBE_MODEL, logger) : null;
 
   let onMessage: (msg: InboundWhatsAppMessage) => Promise<void> = async () => {};
   let onConnected: () => Promise<void> = async () => {};
   let onHistory: (messages: InboundWhatsAppMessage[], ownerName: string | null) => Promise<unknown> = async () => {};
   const gateway =
     !overrides.transport && env.WHATSAPP_ENABLED
-      ? new WhatsAppGateway(db, cipher, bus, logger, (msg) => onMessage(msg), () => onConnected(), (msgs, owner) => onHistory(msgs, owner))
+      ? new WhatsAppGateway(db, cipher, bus, logger, (msg) => onMessage(msg), () => onConnected(), (msgs, owner) => onHistory(msgs, owner), transcriber)
       : null;
   const whatsappTransport: WhatsAppTransport = overrides.transport ?? gateway ?? new DisabledTransport();
   const metaEnabled = !!(env.META_APP_SECRET && env.META_VERIFY_TOKEN && env.META_PAGE_ACCESS_TOKEN && env.META_APP_ID);
@@ -87,7 +90,6 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const leads = new LeadsService(db, bus);
   const followups = new FollowupsService(db, bus, logger);
 
-  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 2, timeout: env.OPENAI_TIMEOUT_MS }) : null;
   const llm = overrides.llm !== undefined ? overrides.llm : openai ? openAiLlm(openai) : null;
   const embedder = overrides.embedder ?? (openai ? openAiEmbedder(openai, env.OPENAI_EMBEDDING_MODEL) : localEmbedder);
   const jobs = new JobRunner(db, logger);

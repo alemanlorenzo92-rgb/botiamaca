@@ -233,6 +233,42 @@ describe('conocimiento', () => {
     expect(await db.knowledgeDocument.findUnique({ where: { id: faq.id } })).toMatchObject({ status: 'PENDING' });
   });
 
+  it('preserva el indicador temporal al editar en solitario y al fusionar', async () => {
+    const { c, llm } = createTestContainer();
+    const single = await db.knowledgeDocument.create({
+      data: { kind: 'POLICY', title: 'A', content: 'Contenido A', temporal: true },
+    });
+    await db.knowledgeDocument.create({
+      data: { kind: 'POLICY', title: 'B', content: 'Contenido B', temporal: true },
+    });
+    await db.knowledgeDocument.create({
+      data: { kind: 'POLICY', title: 'C', content: 'Contenido C', temporal: false },
+    });
+    llm.push(
+      textReply(
+        JSON.stringify({
+          topics: [
+            { title: 'A actualizado', content: 'Contenido A actualizado', temporal: false, ids: ['1'] },
+            { title: 'Fusionado', content: 'Contenido combinado', temporal: false, ids: ['2', '3'] },
+          ],
+          discard: [],
+        }),
+      ),
+    );
+
+    expect(await c.knowledge.consolidate('POLICY')).toBe(1);
+    expect(await db.knowledgeDocument.findUnique({ where: { id: single.id } })).toMatchObject({
+      title: 'A actualizado',
+      content: 'Contenido A actualizado',
+      temporal: true,
+      version: 2,
+    });
+    expect(await db.knowledgeDocument.findFirstOrThrow({ where: { kind: 'POLICY', title: 'Fusionado' } })).toMatchObject({
+      temporal: true,
+      consolidated: true,
+    });
+  });
+
   it('no modifica documentos que cambiaron mientras se generaba la respuesta de agrupación', async () => {
     const { c, llm } = createTestContainer();
     const [first, second, third, fourth] = await Promise.all(

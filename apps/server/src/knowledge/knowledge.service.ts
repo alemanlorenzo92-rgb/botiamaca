@@ -243,7 +243,7 @@ export class KnowledgeService {
       where,
       orderBy: [{ title: 'asc' }, { id: 'asc' }],
       take: 60,
-      select: { id: true, title: true, content: true, version: true, status: true },
+      select: { id: true, title: true, content: true, version: true, status: true, temporal: true },
     });
     if (documents.length < 2) {
       this.logger.info({ kind, before, after: before, reduction: 0 }, 'agrupación de conocimiento');
@@ -305,7 +305,7 @@ export class KnowledgeService {
         }
         const current = await tx.knowledgeDocument.findMany({
           where: { id: { in: topicIds }, conflictWithId: null, conflicts: { none: {} } },
-          select: { id: true, version: true, status: true, kind: true, confidence: true },
+          select: { id: true, version: true, status: true, kind: true, confidence: true, temporal: true },
         });
         const currentById = new Map(current.map((doc) => [doc.id, doc]));
         if (
@@ -323,7 +323,7 @@ export class KnowledgeService {
             kind,
             title,
             content,
-            temporal: topic.temporal,
+            temporal: topic.temporal || current.some((doc) => doc.temporal),
             confidence: Math.max(...current.map((doc) => doc.confidence)),
             status: 'PENDING',
             consolidated: true,
@@ -385,7 +385,8 @@ export class KnowledgeService {
     const where = { id, version, status, conflictWithId: null, conflicts: { none: {} } };
     const doc = await this.db.knowledgeDocument.findFirst({ where });
     if (!doc) return false;
-    if (input.title === doc.title && input.content === doc.content && input.temporal === doc.temporal) return true;
+    const temporal = input.temporal || doc.temporal;
+    if (input.title === doc.title && input.content === doc.content && temporal === doc.temporal) return true;
     const vector = input.title !== doc.title || input.content !== doc.content
       ? (await this.embedder.embed([`${input.title}\n${input.content}`]))[0]!
       : null;
@@ -393,7 +394,7 @@ export class KnowledgeService {
     return this.db.$transaction(async (tx) => {
       const updated = await tx.knowledgeDocument.updateMany({
         where,
-        data: { title: input.title, content: input.content, temporal: input.temporal, version: { increment: 1 } },
+        data: { title: input.title, content: input.content, temporal, version: { increment: 1 } },
       });
       if (!updated.count) return false;
       await tx.knowledgeReview.create({

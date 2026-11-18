@@ -101,6 +101,7 @@ export function registerKnowledgeRoutes(c: Container) {
           status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'DISABLED', 'CONFLICT']).optional(),
           kind: kind.optional(),
           q: z.string().max(100).optional(),
+          take: z.coerce.number().int().min(1).max(500).default(500),
         }),
         request.query,
       );
@@ -113,7 +114,7 @@ export function registerKnowledgeRoutes(c: Container) {
         c.db.knowledgeDocument.findMany({
           where,
           orderBy: [{ updatedAt: 'desc' }],
-          take: 200,
+          take: q.take,
           include: {
             sources: { take: 5, orderBy: { createdAt: 'desc' }, include: { chat: { select: { id: true, fileName: true } } } },
             conflictWith: { select: { id: true, title: true, content: true, status: true } },
@@ -146,6 +147,45 @@ export function registerKnowledgeRoutes(c: Container) {
       const document = await c.knowledge.setStatus(docId, body.status, user.id, body.note);
       await c.audit.log({ actorType: 'USER', actorId: user.id, action: `knowledge.${body.status.toLowerCase()}`, entityType: 'knowledge', entityId: docId });
       return { document };
+    });
+
+    app.post('/knowledge/bulk-status', async (request) => {
+      const body = parse(
+        z.object({ ids: z.array(id).min(1).max(500), status: z.enum(['APPROVED', 'REJECTED']) }),
+        request.body,
+      );
+      const user = requireUser(request);
+      let updated = 0;
+      let failed = 0;
+      for (const docId of body.ids) {
+        try {
+          await c.knowledge.setStatus(docId, body.status, user.id);
+          updated++;
+        } catch {
+          failed++;
+        }
+      }
+      await c.audit.log({
+        actorType: 'USER',
+        actorId: user.id,
+        action: `knowledge.bulk_${body.status.toLowerCase()}`,
+        entityType: 'knowledge',
+        data: { requested: body.ids.length, updated, failed },
+      });
+      return { updated, failed };
+    });
+
+    app.post('/knowledge/consolidate', async (request) => {
+      const user = requireUser(request);
+      const job = await c.jobs.enqueue('knowledge.consolidate', {});
+      await c.audit.log({
+        actorType: 'USER',
+        actorId: user.id,
+        action: 'knowledge.consolidate',
+        entityType: 'knowledge',
+        data: { jobId: job.id },
+      });
+      return { queued: true };
     });
 
     app.get('/knowledge/:id/reviews', async (request) => {

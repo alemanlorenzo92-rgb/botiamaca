@@ -99,6 +99,9 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   jobs.on('knowledge.extract', async (payload) => {
     await knowledge.extractChat((payload as { chatId: string }).chatId);
   });
+  jobs.on('knowledge.consolidate', async () => {
+    await knowledge.consolidateAll();
+  });
   const ai = new AiOrchestrator(
     llm,
     { db, catalog, cart, leads, followups, handoff, settings, audit, media, sender, services },

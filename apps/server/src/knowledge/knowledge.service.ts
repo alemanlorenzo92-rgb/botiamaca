@@ -78,6 +78,60 @@ const CONFLICT_JSON = {
   required: ['contradicts', 'note'],
   properties: { contradicts: { type: 'boolean' }, note: { type: 'string' } },
 };
+const CONSOLIDATE_JSON = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['topics', 'discard'],
+  properties: {
+    topics: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'content', 'temporal', 'ids'],
+        properties: {
+          title: { type: 'string' },
+          content: { type: 'string' },
+          temporal: { type: 'boolean' },
+          ids: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+    discard: { type: 'array', items: { type: 'string' } },
+  },
+};
+const consolidateSchema = z.object({
+  topics: z.array(
+    z.object({
+      title: z.string().min(1),
+      content: z.string().min(1),
+      temporal: z.boolean(),
+      ids: z.array(z.string()),
+    }).strict(),
+  ),
+  discard: z.array(z.string()),
+}).strict();
+const KIND_LABELS: Record<KnowledgeKind, string> = {
+  STYLE: 'estilo',
+  FAQ: 'preguntas frecuentes',
+  PRODUCT: 'productos',
+  SERVICE: 'servicios',
+  POLICY: 'políticas',
+  OBJECTION: 'objeciones',
+  SALES_PROCESS: 'proceso de venta',
+  OTHER: 'otros',
+};
+const CONSOLIDATE_INSTRUCTIONS = `Sos la editora del conocimiento de Male Style, una tienda atendida solo por su dueña. Te paso temas de tipo "{kind}" que se sacaron de chats reales con clientas. Muchos dicen lo mismo con otras palabras.
+
+Agrupalos en la menor cantidad posible de temas claros (en general entre 5 y 20). Cada tema nuevo junta todos los que hablan de lo mismo.
+
+Reglas:
+- No inventes nada: el contenido sale solo de los temas que te paso.
+- Si dos temas se contradicen (por ejemplo, distinto costo, plazo o condición), NO los juntes: dejalos en temas separados.
+- Si hay precios, montos o fechas concretas, copialos tal cual y marcá temporal=true.
+- Cada id va en un solo tema. Un tema puede tener un solo id si no se parece a ningún otro.
+- Poné en "discard" los ids que no sirven para atender clientas (charla personal, datos sueltos sin contexto, cosas de un solo caso).
+- Título corto (máximo 80 caracteres). Contenido en español rioplatense, como instrucciones concretas para el bot, en no más de 1200 caracteres.`;
 
 function outputText(res: Response): string {
   for (const item of res.output) {
@@ -112,7 +166,14 @@ export class KnowledgeService {
     private readonly cfg: { model: string; timeoutMs?: number },
   ) {}
 
-  private async ask<T>(instructions: string, input: string, name: string, schema: Record<string, unknown>, parser: z.ZodType<T>): Promise<T> {
+  private async ask<T>(
+    instructions: string,
+    input: string,
+    name: string,
+    schema: Record<string, unknown>,
+    parser: z.ZodType<T>,
+    maxOutputTokens = 4000,
+  ): Promise<T> {
     if (!this.llm) throw new Error('Falta OPENAI_API_KEY: no se puede extraer conocimiento');
     const res = await this.llm.create(
       {
@@ -120,7 +181,7 @@ export class KnowledgeService {
         instructions,
         input,
         text: jsonSchema(name, schema),
-        max_output_tokens: 4000,
+        max_output_tokens: maxOutputTokens,
         store: false,
         // Sin esto gpt-5 razona en "medium" y cada tramo tarda tanto que se corta por tiempo.
         ...(/^(gpt-5|o\d)/.test(this.cfg.model) ? { reasoning: { effort: 'low' as const } } : {}),
@@ -172,6 +233,136 @@ export class KnowledgeService {
       });
       throw error;
     }
+  }
+
+  async consolidate(kind: KnowledgeKind): Promise<number> {
+    const where = { kind, status: 'PENDING' as const };
+    const before = await this.db.knowledgeDocument.count({ where });
+    const documents = await this.db.knowledgeDocument.findMany({
+      where,
+      orderBy: [{ title: 'asc' }, { id: 'asc' }],
+      take: 120,
+      select: { id: true, title: true, content: true },
+    });
+    if (documents.length < 2) {
+      this.logger.info({ kind, before, after: before, reduction: 0 }, 'agrupación de conocimiento');
+      return 0;
+    }
+
+    const ids = new Map<string, string>();
+    const input = documents
+      .map((doc, index) => {
+        const shortId = String(index + 1);
+        ids.set(shortId, doc.id);
+        return `[${shortId}] ${anonymize(doc.title)}\n${anonymize(doc.content).slice(0, 600)}`;
+      })
+      .join('\n\n');
+    const { topics, discard } = await this.ask(
+      CONSOLIDATE_INSTRUCTIONS.replace('{kind}', KIND_LABELS[kind]),
+      input,
+      'knowledge_consolidation',
+      CONSOLIDATE_JSON,
+      consolidateSchema,
+      12_000,
+    );
+
+    const assigned = new Set<string>();
+    const validTopics: { topic: (typeof topics)[number]; ids: string[] }[] = [];
+    for (const topic of topics) {
+      const topicIds: string[] = [];
+      for (const shortId of topic.ids) {
+        const id = ids.get(shortId);
+        if (!id || assigned.has(id)) continue;
+        assigned.add(id);
+        topicIds.push(id);
+      }
+      if (topicIds.length) validTopics.push({ topic, ids: topicIds });
+    }
+
+    const discarded = new Set<string>();
+    for (const shortId of discard) {
+      const id = ids.get(shortId);
+      if (id && !assigned.has(id)) discarded.add(id);
+    }
+
+    for (const { topic, ids: topicIds } of validTopics) {
+      const title = anonymize(topic.title).trim().slice(0, 200);
+      const content = anonymize(topic.content).trim().slice(0, 3000);
+      if (topicIds.length === 1) {
+        const id = topicIds[0]!;
+        const existing = await this.db.knowledgeDocument.findFirst({
+          where: { id, ...where },
+          select: { title: true, content: true },
+        });
+        if (existing && (existing.title !== title || existing.content !== content)) {
+          await this.edit(id, { title, content, temporal: topic.temporal }, null);
+        }
+        continue;
+      }
+
+      const originals = await this.db.knowledgeDocument.findMany({
+        where: { id: { in: topicIds }, ...where },
+        select: { id: true, confidence: true },
+      });
+      if (originals.length !== topicIds.length) continue;
+      const [vector] = await this.embedder.embed([`${title}\n${content}`]);
+      await this.db.$transaction(async (tx) => {
+        const current = await tx.knowledgeDocument.findMany({
+          where: { id: { in: topicIds }, ...where },
+          select: { id: true, confidence: true },
+        });
+        if (current.length !== topicIds.length) return;
+
+        const merged = await tx.knowledgeDocument.create({
+          data: {
+            kind,
+            title,
+            content,
+            temporal: topic.temporal,
+            confidence: Math.max(...current.map((doc) => doc.confidence)),
+            status: 'PENDING',
+            chunks: { create: { kind: 'DOCUMENT', text: `${title}\n${content}`, active: false } },
+          },
+          include: { chunks: { select: { id: true } } },
+        });
+        await tx.$executeRaw`UPDATE knowledge_chunks SET embedding = ${toVectorLiteral(vector!)}::vector WHERE id = ${merged.chunks[0]!.id}::uuid`;
+        await tx.knowledgeSource.updateMany({ where: { documentId: { in: topicIds } }, data: { documentId: merged.id } });
+        await tx.knowledgeDocument.updateMany({ where: { conflictWithId: { in: topicIds } }, data: { conflictWithId: null } });
+        await tx.knowledgeDocument.deleteMany({ where: { id: { in: topicIds } } });
+      });
+    }
+
+    for (const id of discarded) {
+      const pending = await this.db.knowledgeDocument.findFirst({ where: { id, ...where }, select: { id: true } });
+      if (pending) await this.setStatus(id, 'REJECTED', null, 'Descartado al agrupar');
+    }
+
+    const after = await this.db.knowledgeDocument.count({ where });
+    const reduction = Math.max(0, before - after);
+    this.logger.info(
+      { kind, before, after, reduction, mergedTopics: validTopics.filter((entry) => entry.ids.length > 1).length, discarded: discarded.size },
+      'agrupación de conocimiento',
+    );
+    return reduction;
+  }
+
+  async consolidateAll(): Promise<number> {
+    let totalReduction = 0;
+    for (const kind of KINDS) {
+      let pending = await this.db.knowledgeDocument.count({ where: { kind, status: 'PENDING' } });
+      let reductionForKind = 0;
+      let rounds = 0;
+      while (pending > 20 && rounds < 5) {
+        rounds++;
+        const reduction = await this.consolidate(kind);
+        reductionForKind += reduction;
+        if (!reduction) break;
+        pending = await this.db.knowledgeDocument.count({ where: { kind, status: 'PENDING' } });
+      }
+      totalReduction += reductionForKind;
+      this.logger.info({ kind, rounds, reduction: reductionForKind, pending }, 'agrupación completa por tipo');
+    }
+    return totalReduction;
   }
 
   /** Intercambios cliente → dueña como ejemplos de tono (solo se recuperan los más parecidos a la consulta). */

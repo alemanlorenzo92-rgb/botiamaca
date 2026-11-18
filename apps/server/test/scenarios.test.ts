@@ -190,6 +190,19 @@ describe('atención humana', () => {
 });
 
 describe('robustez', () => {
+  it('guarda y responde un audio transcripto', async () => {
+    const transcription = 'Quiero dos kilos de papa y una lechuga';
+    const { c, llm } = createTestContainer();
+    llm.push(textReply('Sí, hacemos envíos.'));
+
+    await customerSays(c, transcription, { type: 'AUDIO' });
+
+    const saved = await db.message.findFirstOrThrow({ where: { direction: 'INBOUND' } });
+    expect(saved).toMatchObject({ type: 'AUDIO', text: transcription });
+    expect(JSON.stringify(llm.calls[0]?.input)).toContain(`[Envió un audio; transcripción automática] ${transcription}`);
+    expect(String(llm.calls[0]?.instructions)).toContain('Si un audio viene transcripto');
+  });
+
   it('reconexión: ignora historial viejo y retoma mensajes sin responder', async () => {
     const now = Date.now();
     expect(shouldHandleUpsert('notify', new Date(now - 60 * 60_000), now)).toBe(true);

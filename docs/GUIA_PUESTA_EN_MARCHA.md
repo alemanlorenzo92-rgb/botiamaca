@@ -13,6 +13,7 @@ persona (ver `docs/RAILWAY.md`).
 | `OPENAI_MODEL` | no | `gpt-5-mini` (por defecto). También se cambia desde Configuración → IA |
 | `OPENAI_EMBEDDING_MODEL` | no | `text-embedding-3-small`. No cambiarlo después de importar chats |
 | `OPENAI_MAX_OUTPUT_TOKENS` / `OPENAI_TIMEOUT_MS` | no | `800` / `30000` |
+| `OPENAI_TRANSCRIBE_MODEL` | no | `gpt-4o-mini-transcribe` para transcribir audios de WhatsApp |
 | `WHATSAPP_ENABLED` | no | `true` en producción; `false` para probar sin WhatsApp |
 | `WHATSAPP_CONTACT_LINK` | no | Link de WhatsApp para ofrecer desde Instagram y Facebook; si se omite, se arma con el número conectado |
 | `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ACCESS_TOKEN` | no | Configurar junto con `META_APP_ID` para habilitar Instagram Direct y Messenger |

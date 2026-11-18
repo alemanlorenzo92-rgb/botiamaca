@@ -2,6 +2,7 @@ import { Boom } from '@hapi/boom';
 import makeWASocket, {
   Browsers,
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   type WASocket,
@@ -11,6 +12,7 @@ import QRCode from 'qrcode';
 import type { Cipher } from '../core/crypto.js';
 import type { EventBus } from '../core/events.js';
 import type { Logger } from '../core/logger.js';
+import { transcribeIfAudio, type AudioTranscriber } from '../ai/transcriber.js';
 import { clearAuthState, usePostgresAuthState } from './auth-state.js';
 import { mapWAMessage } from './message-mapper.js';
 import { WhatsAppNotConnectedError, type InboundWhatsAppMessage, type OutboundMedia, type WhatsAppTransport } from './transport.js';
@@ -49,6 +51,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
     private readonly onMessage: (msg: InboundWhatsAppMessage) => Promise<void>,
     private readonly onConnected: () => void | Promise<void> = () => {},
     private readonly onHistory: (messages: InboundWhatsAppMessage[], ownerName: string | null) => Promise<unknown> = async () => {},
+    private readonly transcriber: AudioTranscriber | null = null,
   ) {}
 
   getStatus() {
@@ -168,7 +171,13 @@ export class WhatsAppGateway implements WhatsAppTransport {
           if (!mapped) continue;
           if (!shouldHandleUpsert(type, mapped.timestamp)) continue;
           try {
-            await this.onMessage(mapped);
+            const prepared = await transcribeIfAudio(mapped, {
+              seconds: raw.message?.audioMessage?.seconds ?? null,
+              download: () => downloadMediaMessage(raw, 'buffer', {}, { logger: waLogger, reuploadRequest: sock.updateMediaMessage }) as Promise<Buffer>,
+              transcriber: this.transcriber,
+              logger: this.logger,
+            });
+            await this.onMessage(prepared);
           } catch (error) {
             this.logger.error({ err: error, externalId: mapped.externalId }, 'no se pudo procesar el mensaje entrante');
           }

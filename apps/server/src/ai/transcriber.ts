@@ -31,12 +31,19 @@ export const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 
 export async function transcribeIfAudio(
   msg: InboundWhatsAppMessage,
-  opts: { seconds: number | null; download: () => Promise<Buffer>; transcriber: AudioTranscriber | null; logger: Logger },
+  opts: {
+    seconds: number | null;
+    download: () => Promise<Buffer>;
+    transcriber: AudioTranscriber | null;
+    logger: Logger;
+    isDuplicate?: () => Promise<boolean>;
+  },
 ): Promise<InboundWhatsAppMessage> {
   if (msg.type !== 'AUDIO' || msg.fromMe || !opts.transcriber || (opts.seconds !== null && opts.seconds > MAX_AUDIO_SECONDS)) {
     return msg;
   }
   try {
+    if (await opts.isDuplicate?.()) return msg;
     const audio = await opts.download();
     if (audio.length > MAX_AUDIO_BYTES) {
       opts.logger.warn({ length: audio.length }, 'audio transcription skipped: file too large');

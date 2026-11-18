@@ -176,6 +176,8 @@ export class WhatsAppGateway implements WhatsAppTransport {
               download: () => downloadMediaMessage(raw, 'buffer', {}, { logger: waLogger, reuploadRequest: sock.updateMediaMessage }) as Promise<Buffer>,
               transcriber: this.transcriber,
               logger: this.logger,
+              isDuplicate: async () =>
+                !!(await this.db.message.findUnique({ where: { externalId: mapped.externalId }, select: { id: true } })),
             });
             await this.onMessage(prepared);
           } catch (error) {

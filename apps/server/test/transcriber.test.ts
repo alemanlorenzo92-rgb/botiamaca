@@ -91,6 +91,22 @@ describe('transcribeIfAudio', () => {
     expect(result).toBe(msg);
     expect(download).not.toHaveBeenCalled();
   });
+
+  it('no descarga ni transcribe un mensaje duplicado', async () => {
+    const msg = audioMessage();
+    const download = vi.fn();
+    const transcribe = vi.fn();
+    const result = await transcribeIfAudio(msg, {
+      seconds: null,
+      download,
+      transcriber: { transcribe },
+      isDuplicate: async () => true,
+      logger,
+    });
+    expect(result).toBe(msg);
+    expect(download).not.toHaveBeenCalled();
+    expect(transcribe).not.toHaveBeenCalled();
+  });
 });
 
 describe('historial de audios', () => {

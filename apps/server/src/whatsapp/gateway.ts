@@ -5,6 +5,7 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  normalizeMessageContent,
   type WASocket,
 } from 'baileys';
 import type { PrismaClient } from '@prisma/client';
@@ -172,7 +173,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
           if (!shouldHandleUpsert(type, mapped.timestamp)) continue;
           try {
             const prepared = await transcribeIfAudio(mapped, {
-              seconds: raw.message?.audioMessage?.seconds ?? null,
+              seconds: normalizeMessageContent(raw.message)?.audioMessage?.seconds ?? null,
               download: () => downloadMediaMessage(raw, 'buffer', {}, { logger: waLogger, reuploadRequest: sock.updateMediaMessage }) as Promise<Buffer>,
               transcriber: this.transcriber,
               logger: this.logger,

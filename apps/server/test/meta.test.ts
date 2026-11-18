@@ -274,6 +274,32 @@ describe('webhook de Meta', () => {
     expect(llm.calls).toHaveLength(0);
   });
 
+  it('usa el último número guardado si WhatsApp está desconectado', async () => {
+    c.env.WHATSAPP_CONTACT_LINK = undefined;
+    whatsapp.connected = false;
+    await c.settings.saveWhatsappLastNumber('5493584000000');
+
+    expect((await postMeta(instagramMessage({ mid: 'ig-saved-number', text: 'Hola' }))).statusCode).toBe(200);
+    const sent = fetchCalls.find((call) => call.init?.method === 'POST');
+    expect(JSON.parse(String(sent?.init?.body))).toMatchObject({
+      recipient: { id: 'IG_CUSTOMER_1' },
+      message: { text: '¡Hola! 😊 Para atenderte mejor escribinos por WhatsApp: +54 9 3584000000 https://wa.me/5493584000000' },
+    });
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it('no manda la respuesta fija ni registra datos personales si no hay un número disponible', async () => {
+    c.env.WHATSAPP_CONTACT_LINK = undefined;
+    whatsapp.connected = false;
+    const warning = vi.spyOn(c.logger, 'warn');
+
+    expect((await postMeta(instagramMessage({ mid: 'ig-no-whatsapp-number', text: 'Hola' }))).statusCode).toBe(200);
+    expect(fetchCalls.filter((call) => call.init?.method === 'POST')).toHaveLength(0);
+    expect(await db.message.count({ where: { direction: 'OUTBOUND' } })).toBe(0);
+    expect(warning).toHaveBeenCalledWith('no se envía la respuesta automática de Meta: falta un destino de WhatsApp');
+    expect(llm.calls).toHaveLength(0);
+  });
+
   it('divide textos largos de Instagram en partes de hasta 1000 bytes', async () => {
     fetchCalls = [];
     vi.stubGlobal(

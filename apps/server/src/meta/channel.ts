@@ -17,8 +17,7 @@ export function whatsappDigits(link: string): string | null {
   }
 }
 
-export function whatsappTarget(link: string | null): string {
-  if (!link) return 'este mismo número';
+export function whatsappTarget(link: string): string {
   const digits = whatsappDigits(link);
   if (!digits) return link;
   const number = digits.startsWith('549') ? `+54 9 ${digits.slice(3)}` : `+${digits}`;

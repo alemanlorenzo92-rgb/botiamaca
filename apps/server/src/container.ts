@@ -50,7 +50,7 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const settings = new SettingsService(db);
 
   let onMessage: (msg: InboundWhatsAppMessage) => Promise<void> = async () => {};
-  let onConnected: () => void = () => {};
+  let onConnected: () => Promise<void> = async () => {};
   let onHistory: (messages: InboundWhatsAppMessage[], ownerName: string | null) => Promise<unknown> = async () => {};
   const gateway =
     !overrides.transport && env.WHATSAPP_ENABLED
@@ -60,10 +60,14 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const metaEnabled = !!(env.META_APP_SECRET && env.META_VERIFY_TOKEN && env.META_PAGE_ACCESS_TOKEN && env.META_APP_ID);
   const metaTransport = new MetaTransport(metaEnabled ? env.META_PAGE_ACCESS_TOKEN! : null);
   const transport: WhatsAppTransport = new ChannelRouter(whatsappTransport, metaTransport);
-  const whatsappLink = () => {
-    if (env.WHATSAPP_CONTACT_LINK) return env.WHATSAPP_CONTACT_LINK;
+  const connectedWhatsappNumber = () => {
     const me = gateway?.isConnected() ? gateway.getStatus().me : null;
     const number = me?.split('@')[0]?.split(':')[0];
+    return number && /^\d+$/.test(number) ? number : null;
+  };
+  const whatsappLink = async () => {
+    if (env.WHATSAPP_CONTACT_LINK) return env.WHATSAPP_CONTACT_LINK;
+    const number = connectedWhatsappNumber() ?? (await settings.getWhatsappLastNumber());
     return number ? `https://wa.me/${number}` : null;
   };
 
@@ -110,8 +114,20 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
   const worker = new ReplyWorker(db, guard, ai, sender, handoff, settings, logger);
   const autoFollowups = new AutoFollowupService(db, settings, sender, logger);
   onHistory = (msgs, owner) => chatImport.importHistory(msgs, owner);
-  onConnected = () => {
-    void worker.recoverPending().catch((err: unknown) => logger.error({ err }, 'no se pudieron retomar respuestas pendientes'));
+  onConnected = async () => {
+    const number = connectedWhatsappNumber();
+    if (number) {
+      try {
+        await settings.saveWhatsappLastNumber(number);
+      } catch {
+        logger.error('no se pudo guardar el último número de WhatsApp conectado');
+      }
+    }
+    try {
+      await worker.recoverPending();
+    } catch (err) {
+      logger.error({ err }, 'no se pudieron retomar respuestas pendientes');
+    }
   };
 
   onMessage = async (msg) => {
@@ -126,9 +142,14 @@ export function createContainer(env: Env, logger: Logger, overrides: ContainerOv
       if (!conversation || conversation.status === 'HUMAN_ACTIVE' || conversation.contact.botMuted) return;
       const aiSettings = await settings.getAi();
       if (!aiSettings.enabled) return;
+      const link = await whatsappLink();
+      if (!link) {
+        logger.warn('no se envía la respuesta automática de Meta: falta un destino de WhatsApp');
+        return;
+      }
       await sender.sendText({
         conversationId: result.conversationId,
-        text: aiSettings.metaAutoReply.replaceAll('{whatsapp}', whatsappTarget(whatsappLink())),
+        text: aiSettings.metaAutoReply.replaceAll('{whatsapp}', whatsappTarget(link)),
         author: 'AI',
         allowMetaAutoReply: true,
       });

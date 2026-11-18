@@ -67,17 +67,20 @@ export class MemoryStorage implements MediaStorage {
 }
 
 type Handler = (params: ResponseCreateParamsNonStreaming) => Response | Promise<Response>;
+type LlmOptions = { signal: AbortSignal; timeout?: number };
 
 /** LLM simulado: responde en orden con los handlers encolados y guarda cada request. */
 export class FakeLlm implements LlmClient {
   calls: ResponseCreateParamsNonStreaming[] = [];
+  options: LlmOptions[] = [];
   private queue: Handler[] = [];
   push(...handlers: (Handler | Response)[]) {
     this.queue.push(...handlers.map((h) => (typeof h === 'function' ? h : () => h)));
     return this;
   }
-  async create(params: ResponseCreateParamsNonStreaming) {
+  async create(params: ResponseCreateParamsNonStreaming, options: LlmOptions) {
     this.calls.push(structuredClone(params));
+    this.options.push(options);
     const next = this.queue.shift();
     if (!next) throw new Error('FakeLlm: no hay más respuestas encoladas');
     return next(params);

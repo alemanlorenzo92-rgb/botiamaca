@@ -176,6 +176,7 @@ export class KnowledgeService {
     timeoutMs?: number,
   ): Promise<T> {
     if (!this.llm) throw new Error('Falta OPENAI_API_KEY: no se puede extraer conocimiento');
+    const timeout = timeoutMs ?? this.cfg.timeoutMs ?? 120_000;
     const res = await this.llm.create(
       {
         model: this.cfg.model,
@@ -187,7 +188,7 @@ export class KnowledgeService {
         // Sin esto gpt-5 razona en "medium" y cada tramo tarda tanto que se corta por tiempo.
         ...(/^(gpt-5|o\d)/.test(this.cfg.model) ? { reasoning: { effort: 'low' as const } } : {}),
       },
-      { signal: AbortSignal.timeout(timeoutMs ?? this.cfg.timeoutMs ?? 120_000) },
+      { signal: AbortSignal.timeout(timeout), timeout },
     );
     return parser.parse(JSON.parse(outputText(res)));
   }

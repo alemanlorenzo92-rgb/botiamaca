@@ -209,6 +209,7 @@ describe('conocimiento', () => {
     const requestInput = String(request.input);
     expect(request.instructions).toContain('de tipo "políticas"');
     expect(request.max_output_tokens).toBe(12_000);
+    expect(llm.options[0]?.timeout).toBe(300_000);
     expect(requestInput).toContain('[1] Envíos\n');
     expect(requestInput.split('\n\n')[0]).toHaveLength('[1] Envíos\n'.length + 700);
     expect(requestInput).not.toContain(conflict.title);
@@ -360,6 +361,7 @@ describe('conocimiento', () => {
     const a = await importText(c, CHAT_A);
     llm.push(extraction(item(), item({ excerpt: 'otra vez' }), item({ kind: 'STYLE', title: 'Saludo', content: 'Saluda con calidez y usa el emoji 💖', excerpt: 'Hola! 💖' })));
     expect(await c.jobs.runOnce()).toBe(1);
+    expect(llm.options[0]?.timeout).toBe(120_000);
     expect(await db.importedChat.findUniqueOrThrow({ where: { id: a.chat.id } })).toMatchObject({ status: 'DONE' });
     const docs = await db.knowledgeDocument.findMany({ include: { sources: true }, orderBy: { title: 'asc' } });
     expect(docs.map((d) => [d.title, d.status, d.sources.length])).toEqual([['Mínimo mayorista', 'PENDING', 2], ['Saludo', 'PENDING', 1]]);

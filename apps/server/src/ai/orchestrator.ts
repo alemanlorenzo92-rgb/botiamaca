@@ -16,7 +16,7 @@ import { openAiTools, runTool, type ToolContext, type ToolDeps } from './tools.j
 
 /** Lo mínimo que necesitamos del cliente de OpenAI (permite simularlo en tests). */
 export interface LlmClient {
-  create(params: ResponseCreateParamsNonStreaming, options: { signal: AbortSignal }): Promise<Response>;
+  create(params: ResponseCreateParamsNonStreaming, options: { signal: AbortSignal; timeout?: number }): Promise<Response>;
 }
 
 export function openAiLlm(client: OpenAI): LlmClient {

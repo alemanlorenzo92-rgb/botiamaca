@@ -237,13 +237,13 @@ export class KnowledgeService {
   }
 
   async consolidate(kind: KnowledgeKind): Promise<number> {
-    const where = { kind, status: 'PENDING' as const };
+    const where = { kind, status: 'PENDING' as const, conflictWithId: null, conflicts: { none: {} } };
     const before = await this.db.knowledgeDocument.count({ where });
     const documents = await this.db.knowledgeDocument.findMany({
       where,
       orderBy: [{ title: 'asc' }, { id: 'asc' }],
       take: 60,
-      select: { id: true, title: true, content: true },
+      select: { id: true, title: true, content: true, version: true, status: true },
     });
     if (documents.length < 2) {
       this.logger.info({ kind, before, after: before, reduction: 0 }, 'agrupación de conocimiento');
@@ -251,11 +251,12 @@ export class KnowledgeService {
     }
 
     const ids = new Map<string, string>();
+    const documentsById = new Map(documents.map((doc) => [doc.id, doc]));
     const input = documents
       .map((doc, index) => {
         const shortId = String(index + 1);
         ids.set(shortId, doc.id);
-        return `[${shortId}] ${anonymize(doc.title)}\n${anonymize(doc.content).slice(0, 600)}`;
+        return `[${shortId}] ${anonymize(doc.title)}\n${anonymize(doc.content)}`;
       })
       .join('\n\n');
     const { topics, discard } = await this.ask(
@@ -292,28 +293,30 @@ export class KnowledgeService {
       const content = anonymize(topic.content).trim().slice(0, 3000);
       if (topicIds.length === 1) {
         const id = topicIds[0]!;
-        const existing = await this.db.knowledgeDocument.findFirst({
-          where: { id, ...where },
-          select: { title: true, content: true },
-        });
-        if (existing && (existing.title !== title || existing.content !== content)) {
-          await this.edit(id, { title, content, temporal: topic.temporal }, null);
-        }
+        const loaded = documentsById.get(id)!;
+        await this.editIfUnchanged(id, loaded.version, loaded.status, { title, content, temporal: topic.temporal });
         continue;
       }
 
-      const originals = await this.db.knowledgeDocument.findMany({
-        where: { id: { in: topicIds }, ...where },
-        select: { id: true, confidence: true },
-      });
-      if (originals.length !== topicIds.length) continue;
       const [vector] = await this.embedder.embed([`${title}\n${content}`]);
       await this.db.$transaction(async (tx) => {
+        for (const id of [...topicIds].sort()) {
+          await tx.$queryRaw`SELECT id FROM knowledge_documents WHERE id = ${id}::uuid FOR UPDATE`;
+        }
         const current = await tx.knowledgeDocument.findMany({
-          where: { id: { in: topicIds }, ...where },
-          select: { id: true, confidence: true },
+          where: { id: { in: topicIds }, conflictWithId: null, conflicts: { none: {} } },
+          select: { id: true, version: true, status: true, kind: true, confidence: true },
         });
-        if (current.length !== topicIds.length) return;
+        const currentById = new Map(current.map((doc) => [doc.id, doc]));
+        if (
+          topicIds.some((id) => {
+            const loaded = documentsById.get(id);
+            const latest = currentById.get(id);
+            return !loaded || !latest || latest.version !== loaded.version || latest.status !== loaded.status || latest.status !== 'PENDING' || latest.kind !== kind;
+          })
+        ) {
+          return;
+        }
 
         const merged = await tx.knowledgeDocument.create({
           data: {
@@ -323,20 +326,26 @@ export class KnowledgeService {
             temporal: topic.temporal,
             confidence: Math.max(...current.map((doc) => doc.confidence)),
             status: 'PENDING',
+            consolidated: true,
             chunks: { create: { kind: 'DOCUMENT', text: `${title}\n${content}`, active: false } },
           },
           include: { chunks: { select: { id: true } } },
         });
         await tx.$executeRaw`UPDATE knowledge_chunks SET embedding = ${toVectorLiteral(vector!)}::vector WHERE id = ${merged.chunks[0]!.id}::uuid`;
         await tx.knowledgeSource.updateMany({ where: { documentId: { in: topicIds } }, data: { documentId: merged.id } });
-        await tx.knowledgeDocument.updateMany({ where: { conflictWithId: { in: topicIds } }, data: { conflictWithId: null } });
-        await tx.knowledgeDocument.deleteMany({ where: { id: { in: topicIds } } });
+        for (const id of topicIds) {
+          const loaded = documentsById.get(id)!;
+          const deleted = await tx.knowledgeDocument.deleteMany({
+            where: { id, kind, status: loaded.status, version: loaded.version, conflictWithId: null, conflicts: { none: {} } },
+          });
+          if (deleted.count !== 1) throw new Error('No se pudo confirmar la versión del conocimiento agrupado');
+        }
       });
     }
 
     for (const id of discarded) {
-      const pending = await this.db.knowledgeDocument.findFirst({ where: { id, ...where }, select: { id: true } });
-      if (pending) await this.setStatus(id, 'REJECTED', null, 'Descartado al agrupar');
+      const loaded = documentsById.get(id);
+      if (loaded) await this.rejectIfUnchanged(id, loaded.version);
     }
 
     const after = await this.db.knowledgeDocument.count({ where });
@@ -365,6 +374,60 @@ export class KnowledgeService {
       this.logger.info({ kind, rounds, reduction: reductionForKind, pending }, 'agrupación completa por tipo');
     }
     return totalReduction;
+  }
+
+  private async editIfUnchanged(
+    id: string,
+    version: number,
+    status: KnowledgeStatus,
+    input: { title: string; content: string; temporal: boolean },
+  ) {
+    const where = { id, version, status, conflictWithId: null, conflicts: { none: {} } };
+    const doc = await this.db.knowledgeDocument.findFirst({ where });
+    if (!doc) return false;
+    if (input.title === doc.title && input.content === doc.content && input.temporal === doc.temporal) return true;
+    const vector = input.title !== doc.title || input.content !== doc.content
+      ? (await this.embedder.embed([`${input.title}\n${input.content}`]))[0]!
+      : null;
+
+    return this.db.$transaction(async (tx) => {
+      const updated = await tx.knowledgeDocument.updateMany({
+        where,
+        data: { title: input.title, content: input.content, temporal: input.temporal, version: { increment: 1 } },
+      });
+      if (!updated.count) return false;
+      await tx.knowledgeReview.create({
+        data: {
+          documentId: id,
+          action: 'edited',
+          userId: null,
+          before: { title: doc.title, content: doc.content, kind: doc.kind, temporal: doc.temporal },
+        },
+      });
+      if (vector) {
+        const chunks = await tx.knowledgeChunk.findMany({ where: { documentId: id, kind: 'DOCUMENT' }, select: { id: true } });
+        for (const chunk of chunks) {
+          await tx.knowledgeChunk.update({ where: { id: chunk.id }, data: { text: `${input.title}\n${input.content}` } });
+          await tx.$executeRaw`UPDATE knowledge_chunks SET embedding = ${toVectorLiteral(vector)}::vector WHERE id = ${chunk.id}::uuid`;
+        }
+      }
+      return true;
+    });
+  }
+
+  private async rejectIfUnchanged(id: string, version: number) {
+    return this.db.$transaction(async (tx) => {
+      const rejected = await tx.knowledgeDocument.updateMany({
+        where: { id, version, status: 'PENDING', conflictWithId: null, conflicts: { none: {} } },
+        data: { status: 'REJECTED' },
+      });
+      if (!rejected.count) return false;
+      await tx.knowledgeChunk.updateMany({ where: { documentId: id }, data: { active: false } });
+      await tx.knowledgeReview.create({
+        data: { documentId: id, action: 'rejected', userId: null, note: 'Descartado al agrupar', before: { status: 'PENDING' } },
+      });
+      return true;
+    });
   }
 
   /** Intercambios cliente → dueña como ejemplos de tono (solo se recuperan los más parecidos a la consulta). */

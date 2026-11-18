@@ -11,7 +11,7 @@ export interface InboundWhatsAppMessage {
 }
 
 export interface WhatsAppTransport {
-  isConnected(): boolean;
+  isConnected(jid?: string): boolean;
   sendText(jid: string, text: string): Promise<{ externalId: string }>;
   sendMedia(jid: string, media: OutboundMedia): Promise<{ externalId: string }>;
 }

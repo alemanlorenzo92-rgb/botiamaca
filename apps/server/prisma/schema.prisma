@@ -66,10 +66,17 @@ enum BuyerType {
   EVENT
 }
 
+enum Channel {
+  WHATSAPP
+  INSTAGRAM
+  MESSENGER
+}
+
 model Contact {
   id               String    @id @default(uuid()) @db.Uuid
   /// JID de WhatsApp al que se responde (puede ser @s.whatsapp.net o @lid)
   waJid            String    @unique @map("wa_jid")
+  channel          Channel   @default(WHATSAPP)
   /// JID alternativo (número o LID) informado por WhatsApp
   waAltJid         String?   @map("wa_alt_jid")
   phone            String?
@@ -568,6 +575,7 @@ model AiSetting {
   /// Seguimiento automático si la clienta deja de responder (null = apagado). Una sola vez por silencio, sin precios.
   followupAfterHours  Int?     @default(72) @map("followup_after_hours")
   followupMessage     String   @default("¡Hola! ¿Pudiste ver lo que te pasé? Contame qué producto te interesó y te paso la info 😊") @map("followup_message")
+  metaAutoReply       String   @default("¡Hola! 😊 Para atenderte mejor escribinos por WhatsApp: {whatsapp}") @map("meta_auto_reply")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("ai_settings")

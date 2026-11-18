@@ -23,7 +23,7 @@ if (!/smoke|test/i.test(dbName(url)) || (process.env.DATABASE_URL && dbName(proc
 class RecordingTransport implements WhatsAppTransport {
   sent: string[] = [];
   media: string[] = [];
-  isConnected() { return true; }
+  isConnected(_jid?: string) { return true; }
   async sendText(_jid: string, text: string) { this.sent.push(text); return { externalId: randomUUID() }; }
   async sendMedia(_jid: string, m: OutboundMedia) { this.media.push(m.mimetype); return { externalId: randomUUID() }; }
 }

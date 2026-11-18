@@ -9,6 +9,7 @@ export interface Me {
 export interface Contact {
   id: string;
   waJid: string;
+  channel: 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
   phone: string | null;
   name: string | null;
   pushName: string | null;

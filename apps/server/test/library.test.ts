@@ -139,6 +139,21 @@ describe('biblioteca multimedia', () => {
     expect(ctx2.handedOff).toBe(true);
     expect(transport.media).toHaveLength(3);
   });
+
+  it('no manda fotos ni videos por Instagram', async () => {
+    const { c } = createTestContainer();
+    const result = await c.conversations.ingest(inbound('hola', { chatJid: 'ig:123456789', externalId: 'ig-media-test' }));
+    if (result.kind !== 'customer') throw new Error('esperaba cliente');
+    const conversation = await db.conversation.findUniqueOrThrow({ where: { id: result.conversationId }, include: { contact: true } });
+    const ctx: ToolContext = { conversationId: conversation.id, contact: conversation.contact, handedOff: false, mediaSent: 0 };
+    const { asset } = await c.media.upload({ data: png(), fields: { title: 'Foto de prueba' } });
+
+    expect(await runTool('send_image', JSON.stringify({ media_id: asset.id, caption: null }), ctx, depsOf(c))).toMatchObject({
+      ok: false,
+      internal: false,
+      error: expect.stringContaining('en este canal no se mandan fotos ni videos: ofrecé verlos por WhatsApp'),
+    });
+  });
 });
 
 describe('catálogo propio y servicios', () => {

@@ -101,6 +101,7 @@ interface AiSettings {
   historyMessages: number;
   followupAfterHours: number | null;
   followupMessage: string;
+  metaAutoReply: string;
 }
 
 function AiSettingsForm() {
@@ -162,6 +163,7 @@ function AiSettingsForm() {
           historyMessages: form.historyMessages,
           followupAfterHours: form.followupAfterHours || null,
           followupMessage: form.followupMessage,
+          metaAutoReply: form.metaAutoReply,
         },
       });
       setMsg('Guardado');
@@ -184,6 +186,18 @@ function AiSettingsForm() {
       {text('errorMessage', 'Mensaje si la IA falla')}
       {text('outsideHoursMessage', 'Mensaje fuera de horario (opcional)')}
       {text('followupMessage', 'Mensaje de seguimiento si la clienta no responde (sin precios)')}
+      <label>
+        Respuesta automática de Instagram y Facebook
+        <textarea
+          rows={4}
+          maxLength={1000}
+          value={form.metaAutoReply}
+          onChange={(e) => setForm({ ...form, metaAutoReply: e.target.value })}
+        />
+        <span className="muted small">
+          El marcador <code>{'{whatsapp}'}</code> se reemplaza por el número de WhatsApp y el link.
+        </span>
+      </label>
       <label>
         Horario de atención humana (JSON, vacío = sin horario)
         <textarea

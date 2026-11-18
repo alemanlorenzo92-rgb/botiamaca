@@ -17,6 +17,8 @@ export const BUSINESS_SETTING_KEYS = [
 
 export type BusinessSettingKey = (typeof BUSINESS_SETTING_KEYS)[number];
 
+const WHATSAPP_LAST_NUMBER_KEY = 'whatsapp_last_number';
+
 export class SettingsService {
   constructor(private readonly db: PrismaClient) {}
 
@@ -34,6 +36,20 @@ export class SettingsService {
   async getAllBusiness(): Promise<Record<string, Prisma.JsonValue>> {
     const rows = await this.db.businessSetting.findMany();
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  }
+
+  async getWhatsappLastNumber(): Promise<string | null> {
+    const row = await this.db.businessSetting.findUnique({ where: { key: WHATSAPP_LAST_NUMBER_KEY } });
+    return typeof row?.value === 'string' && /^\d+$/.test(row.value) ? row.value : null;
+  }
+
+  async saveWhatsappLastNumber(number: string): Promise<void> {
+    if (!/^\d+$/.test(number)) return;
+    await this.db.businessSetting.upsert({
+      where: { key: WHATSAPP_LAST_NUMBER_KEY },
+      create: { key: WHATSAPP_LAST_NUMBER_KEY, value: number },
+      update: { value: number },
+    });
   }
 
   async setBusiness(key: BusinessSettingKey, value: Prisma.InputJsonValue, userId: string | null) {

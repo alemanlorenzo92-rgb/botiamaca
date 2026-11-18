@@ -34,6 +34,11 @@ export class ReplyWorker {
 
   async schedule(conversationId: string): Promise<void> {
     if (this.stopped) return;
+    const conversation = await this.db.conversation.findUnique({
+      where: { id: conversationId },
+      select: { contact: { select: { channel: true } } },
+    });
+    if (!conversation || conversation.contact.channel !== 'WHATSAPP') return;
     const ai = await this.settings.getAi();
     const existing = this.timers.get(conversationId);
     if (existing) clearTimeout(existing);
@@ -71,10 +76,10 @@ export class ReplyWorker {
   }
 
   async process(conversationId: string): Promise<void> {
-    // Sin WhatsApp no se marca nada: los mensajes quedan pendientes y se retoman al reconectar.
-    if (!this.sender.isReady()) return;
     const pending = await this.pendingIds(conversationId);
     if (!pending.length) return;
+    // Sin conexión en el canal no se marca nada: los mensajes quedan pendientes.
+    if (!(await this.sender.isReady(conversationId))) return;
 
     const before = await this.guard.check(conversationId);
     if (!before.allowed) {

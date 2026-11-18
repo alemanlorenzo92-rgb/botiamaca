@@ -12,10 +12,10 @@ export class MessageSender {
   ) {}
 
   /**
-   * Crea el mensaje saliente. Si es de la IA, bloquea la fila de la conversación y verifica que siga en AI_ACTIVE:
-   * la toma de la dueña actualiza esa misma fila, así que una vez tomada ningún mensaje nuevo de la IA puede salir.
+   * Crea el mensaje saliente y bloquea la conversación mientras valida si puede salir.
+   * La respuesta fija de Meta también se permite fuera de AI_ACTIVE, salvo que ya esté HUMAN_ACTIVE.
    */
-  private async createOutbound(data: Prisma.MessageUncheckedCreateInput): Promise<Message> {
+  private async createOutbound(data: Prisma.MessageUncheckedCreateInput, allowMetaAutoReply = false): Promise<Message> {
     return this.db.$transaction(async (tx) => {
       if (data.author === 'AI' || data.author === 'SYSTEM') {
         const [row] = await tx.$queryRaw<{ status: string; bot_muted: boolean }[]>`
@@ -24,7 +24,8 @@ export class MessageSender {
         if (row?.bot_muted) {
           return tx.message.create({ data: { ...data, status: 'DISCARDED', error: 'Contacto marcado para que el bot no le responda' } });
         }
-        if (data.author === 'AI' && row?.status !== 'AI_ACTIVE') {
+        const metaAutoReplyAllowed = allowMetaAutoReply && row?.status !== undefined && row.status !== 'HUMAN_ACTIVE';
+        if (data.author === 'AI' && row?.status !== 'AI_ACTIVE' && !metaAutoReplyAllowed) {
           return tx.message.create({ data: { ...data, status: 'DISCARDED', error: `Conversación en estado ${row?.status ?? 'inexistente'}` } });
         }
       }
@@ -38,6 +39,7 @@ export class MessageSender {
     text: string;
     author: Exclude<MessageAuthor, 'CUSTOMER'>;
     userId?: string | null;
+    allowMetaAutoReply?: boolean;
   }) {
     const conversation = await this.db.conversation.findUniqueOrThrow({
       where: { id: params.conversationId },
@@ -51,7 +53,7 @@ export class MessageSender {
       text: params.text,
       status: 'PENDING',
       sentByUserId: params.userId ?? null,
-    });
+    }, params.allowMetaAutoReply);
     if (message.status === 'DISCARDED') return message;
     try {
       const { externalId } = await this.transport.sendText(conversation.contact.waJid, params.text);
@@ -131,14 +133,19 @@ export class MessageSender {
         return saved;
       } catch (error) {
         lastError = error;
-        if (error instanceof WhatsAppNotConnectedError || !this.transport.isConnected()) break;
+        if (error instanceof WhatsAppNotConnectedError || !this.transport.isConnected(conversation.contact.waJid)) break;
       }
     }
     return fail(lastError instanceof Error ? lastError.message : String(lastError));
   }
 
-  isReady(): boolean {
-    return this.transport.isConnected();
+  async isReady(conversationId?: string): Promise<boolean> {
+    if (!conversationId) return this.transport.isConnected();
+    const conversation = await this.db.conversation.findUnique({
+      where: { id: conversationId },
+      select: { contact: { select: { waJid: true } } },
+    });
+    return !!conversation && this.transport.isConnected(conversation.contact.waJid);
   }
 
   /** Registra una respuesta automática que el backend bloqueó (no se envía). */

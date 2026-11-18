@@ -55,7 +55,10 @@ function ConversationList({ selected, onSelect }: { selected: string | null; onS
       {items.map((c) => (
         <div key={c.id} className={`conv-item ${c.id === selected ? 'active' : ''}`} onClick={() => onSelect(c.id)}>
           <div className="row between">
-            <strong>{contactName(c.contact)}</strong>
+            <span>
+              <strong>{contactName(c.contact)}</strong>
+              {c.contact.channel !== 'WHATSAPP' && <span className="muted small"> · {c.contact.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}</span>}
+            </span>
             {c.unreadCount > 0 && <span className="unread">{c.unreadCount}</span>}
           </div>
           <div className="row between">
@@ -143,7 +146,8 @@ function ChatView({ id }: { id: string }) {
       <div className="chat-header">
         <div className="row between">
           <div>
-            <strong>{contactName(conversation.contact)}</strong>{' '}
+            <strong>{contactName(conversation.contact)}</strong>
+            {conversation.contact.channel !== 'WHATSAPP' && <span className="muted small"> · {conversation.contact.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}</span>}{' '}
             <span className="muted small">
               {conversation.contact.phone ?? conversation.contact.waJid} · {BUYER_TYPE[conversation.contact.buyerType]}
             </span>

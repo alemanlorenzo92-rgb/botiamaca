@@ -14,6 +14,9 @@ persona (ver `docs/RAILWAY.md`).
 | `OPENAI_EMBEDDING_MODEL` | no | `text-embedding-3-small`. No cambiarlo después de importar chats |
 | `OPENAI_MAX_OUTPUT_TOKENS` / `OPENAI_TIMEOUT_MS` | no | `800` / `30000` |
 | `WHATSAPP_ENABLED` | no | `true` en producción; `false` para probar sin WhatsApp |
+| `WHATSAPP_CONTACT_LINK` | no | Link de WhatsApp para ofrecer desde Instagram y Facebook; si se omite, se arma con el número conectado |
+| `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ACCESS_TOKEN` | no | Configurar junto con `META_APP_ID` para habilitar Instagram Direct y Messenger |
+| `META_APP_ID` | sí (para Meta) | ID de la app; se requiere para habilitar Meta y filtrar los ecos propios |
 | `PUBLIC_URL`, `PORT`, `TRUST_PROXY` | no | URL pública; `TRUST_PROXY=true` solo detrás de un proxy |
 | `MEDIA_DIR` | no | Carpeta persistente de fotos y videos (`/data/media` en Docker) |
 | `MEDIA_MAX_IMAGE_MB` / `MEDIA_MAX_VIDEO_MB` / `IMPORT_MAX_MB` | no | `10` / `16` / `200` |
@@ -63,7 +66,20 @@ que se actualice la librería; se necesita una sola instancia del servidor. El b
 primero y limita respuestas por hora. Si la sesión se cierra, el panel muestra el estado y hay que volver a escanear.
 La alternativa estable es la API oficial de WhatsApp Business (requiere cuenta de Meta y plantillas aprobadas).
 
-## 6. Backups
+## 6. Conectar Instagram y Facebook
+
+1. En [developers.facebook.com](https://developers.facebook.com/), creá una app de tipo **Business** y agregale los productos **Messenger** e **Instagram**.
+2. Vinculá la Página de Facebook del negocio con la cuenta profesional de Instagram. Generá un token de acceso de la Página con permisos para mensajería.
+3. En la configuración de webhooks, usá la URL `https://bot-production-c345e3fd.up.railway.app/webhooks/meta` y definí un token de verificación propio.
+4. Suscribí la Página a `messages` y `messaging_postbacks`, y la cuenta de Instagram a `messages`.
+5. En el servidor configurá `META_APP_SECRET` (secreto de la app), `META_VERIFY_TOKEN` (el mismo token del webhook), `META_PAGE_ACCESS_TOKEN` (token de la Página) y `META_APP_ID`. Meta se habilita únicamente cuando están las cuatro. Si querés, configurá también `WHATSAPP_CONTACT_LINK`; si no, el bot usa el número de WhatsApp conectado.
+6. Para producción, completá la verificación del negocio y pedí revisión de la app para `pages_messaging`, `instagram_manage_messages`, `instagram_basic` y `pages_manage_metadata`. Hasta que Meta apruebe la revisión, solo pueden usarlo cuentas que tengan un rol en la app.
+
+Las conversaciones de Instagram y Facebook no se importan ni se usan para extraer conocimiento, y la IA no las redacta.
+Ante cada mensaje, el bot envía la respuesta automática fija configurada en Configuración → IA, que deriva a WhatsApp.
+No se envían fotos, videos ni seguimientos automáticos por estos canales.
+
+## 7. Backups
 
 `DATABASE_URL=... MEDIA_DIR=/data/media ./scripts/backup.sh /ruta/backups` — guarda la base (pg_dump) y las fotos.
 Programarlo a diario (cron) y copiar el resultado fuera del servidor. Restaurar: ver el encabezado del script.

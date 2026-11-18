@@ -28,7 +28,7 @@ export class FakeTransport implements WhatsAppTransport {
   media: { jid: string; kind: string; mimetype: string; caption: string | null; size: number }[] = [];
   /** Cantidad de envíos de medios que van a fallar antes de funcionar */
   failMedia = 0;
-  isConnected() {
+  isConnected(_jid?: string) {
     return this.connected;
   }
   async sendText(jid: string, text: string) {
@@ -123,13 +123,14 @@ export function toolCalls(...calls: [string, Record<string, unknown>][]): Respon
   } as unknown as Response;
 }
 
-export function createTestContainer(overrides: Partial<Parameters<typeof createContainer>[2]> = {}) {
+export function createTestContainer(overrides: Partial<Parameters<typeof createContainer>[2]> = {}, envOverrides: NodeJS.ProcessEnv = {}) {
   const env = loadEnv({
     NODE_ENV: 'test',
     DATABASE_URL: TEST_DATABASE_URL,
     ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
     WHATSAPP_ENABLED: 'false',
     OPENAI_TIMEOUT_MS: '2000',
+    ...envOverrides,
   });
   const logger = createLogger('silent');
   const transport = new FakeTransport();

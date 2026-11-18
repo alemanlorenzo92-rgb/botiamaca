@@ -1,8 +1,9 @@
 # Estado del proyecto y cómo continuar
 
-Vendedora virtual por WhatsApp para **Male Style** (Río Cuarto, Córdoba): glitter, maquillaje artístico y
-servicios para eventos (Glitter Bar y Shimmer Walls). La opera **una sola persona, la dueña**: no hay vendedores
-ni ayudantes. Todo lo del negocio se carga desde el panel (base de datos), no en el código.
+Vendedora virtual por WhatsApp para **Male Style** (Río Cuarto, Córdoba): glitter, maquillaje artístico y servicios para
+eventos (Glitter Bar y Shimmer Walls). Instagram Direct y Facebook Messenger envían una respuesta automática fija que
+deriva a WhatsApp. La opera **una sola persona, la dueña**: no hay vendedores ni ayudantes. Todo lo del negocio se
+carga desde el panel (base de datos), no en el código.
 
 Restricciones fijas:
 - Proyecto independiente: no tiene relación con el CRM de Render Byte.
@@ -97,6 +98,7 @@ Eventos, Seguimientos, Configuración, WhatsApp y Auditoría. En celular el men�
 - Bandeja, derivación, guardia de respuestas (interruptor general, estado, límite por hora, presupuesto de tokens),
   seguimientos, pedidos a revisar, leads de eventos, auditoría y trazabilidad de la IA (`ai_runs`), SSE.
 - Catálogo propio, servicios, biblioteca multimedia, tutoriales y envío de medios.
+- Instagram y Facebook: respuesta automática fija configurable hacia WhatsApp; sin respuestas de IA ni aprendizaje.
 - Importación de chats, anonimización, deduplicación, extracción, duplicados, contradicciones, revisión y RAG.
 - Mensajes entrantes repetidos se descartan por `externalId`; reconexión de WhatsApp con espera creciente; respuestas
   pendientes se retoman al reconectar.

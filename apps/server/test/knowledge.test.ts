@@ -1,5 +1,7 @@
 import AdmZip from 'adm-zip';
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { buildServer } from '../src/http/server.js';
 import type { ExtractedItem } from '../src/knowledge/knowledge.service.js';
 import { createTestContainer, customerSays, db, resetDb, textReply, type TestContainer } from './helpers.js';
 
@@ -69,6 +71,47 @@ describe('importación de chats', () => {
     expect(JSON.stringify(chats)).not.toContain('Juana');
   });
 
+  it('borra un conocimiento consolidado cuando se elimina cualquiera de sus chats fuente', async () => {
+    const { c } = createTestContainer();
+    const first = await importText(c, CHAT_A);
+    const second = await importText(c, CHAT_A.replaceAll('Juana Pérez', 'Ana'));
+    const merged = await db.knowledgeDocument.create({
+      data: {
+        kind: 'POLICY',
+        title: 'Conocimiento combinado',
+        content: 'Mezcla información de ambos chats',
+        consolidated: true,
+        sources: {
+          create: [
+            { chatId: first.chat.id, excerpt: 'Fuente del chat A' },
+            { chatId: second.chat.id, excerpt: 'Fuente del chat B' },
+          ],
+        },
+      },
+    });
+    const shared = await db.knowledgeDocument.create({
+      data: {
+        kind: 'POLICY',
+        title: 'Conocimiento todavía compartido',
+        content: 'Conserva fuentes de chats distintos',
+        sources: {
+          create: [
+            { chatId: first.chat.id, excerpt: 'Fuente original A' },
+            { chatId: second.chat.id, excerpt: 'Fuente original B' },
+          ],
+        },
+      },
+    });
+
+    expect(await c.chatImport.remove(first.chat.id)).toMatchObject({ deletedDocuments: 1 });
+    expect(await db.knowledgeDocument.findUnique({ where: { id: merged.id } })).toBeNull();
+    expect(await db.importedChat.findUnique({ where: { id: second.chat.id } })).not.toBeNull();
+    expect(await db.knowledgeDocument.findUnique({ where: { id: shared.id }, include: { sources: true } })).toMatchObject({
+      id: shared.id,
+      sources: [{ chatId: second.chat.id }],
+    });
+  });
+
   it('exports solapados con más historia previa no duplican; chats que arrancan igual no se pisan', async () => {
     const { c } = createTestContainer();
     const opening = '10/11/2026, 09:00 - Male Style: Hola! Gracias por escribir 💖';
@@ -110,6 +153,197 @@ describe('importación de chats', () => {
 });
 
 describe('conocimiento', () => {
+  it('agrupa pendientes por tipo, conserva fuentes y confianza, y excluye conflictos y otros tipos', async () => {
+    const { c, llm } = createTestContainer();
+    const createDocument = (input: {
+      kind: 'POLICY' | 'FAQ';
+      title: string;
+      content: string;
+      confidence?: number;
+      status?: 'PENDING' | 'CONFLICT';
+      conflictWithId?: string | null;
+    }) =>
+      db.knowledgeDocument.create({
+        data: {
+          kind: input.kind,
+          title: input.title,
+          content: input.content,
+          confidence: input.confidence ?? 0.5,
+          status: input.status ?? 'PENDING',
+          conflictWithId: input.conflictWithId ?? null,
+          sources: { create: { excerpt: `Fuente de ${input.title}` } },
+          chunks: { create: { kind: 'DOCUMENT', text: `${input.title}\n${input.content}`, active: false } },
+        },
+      });
+    const first = await createDocument({ kind: 'POLICY', title: 'Envíos', content: 'x'.repeat(700), confidence: 0.4 });
+    const second = await createDocument({ kind: 'POLICY', title: 'Envíos nacionales', content: 'Entrega a todo el país', confidence: 0.9 });
+    const third = await createDocument({ kind: 'POLICY', title: 'Plazos de envío', content: 'Los pedidos se despachan según disponibilidad', confidence: 0.6 });
+    const fourth = await createDocument({ kind: 'POLICY', title: 'Resto personal', content: 'Charla aislada', confidence: 0.3 });
+    const protectedDocument = await createDocument({
+      kind: 'POLICY',
+      title: 'Pendiente con conflicto',
+      content: 'No debe agruparse con el conflicto',
+    });
+    const conflict = await createDocument({
+      kind: 'POLICY',
+      title: 'Envíos en conflicto',
+      content: 'Otro plazo',
+      status: 'CONFLICT',
+      conflictWithId: protectedDocument.id,
+    });
+    const faq = await createDocument({ kind: 'FAQ', title: 'Pregunta frecuente', content: 'Una respuesta' });
+    llm.push(
+      textReply(
+        JSON.stringify({
+          topics: [
+            { title: 'Envíos agrupados', content: 'Indicá que se realizan envíos a todo el país.', temporal: true, ids: ['1', '2'] },
+            { title: 'Plazos de envío', content: third.content, temporal: false, ids: ['3', '2', '99'] },
+          ],
+          discard: ['1', '4', '99'],
+        }),
+      ),
+    );
+
+    expect(await c.knowledge.consolidate('POLICY')).toBe(2);
+    const request = llm.calls[0]!;
+    const requestInput = String(request.input);
+    expect(request.instructions).toContain('de tipo "políticas"');
+    expect(request.max_output_tokens).toBe(12_000);
+    expect(requestInput).toContain('[1] Envíos\n');
+    expect(requestInput.split('\n\n')[0]).toHaveLength('[1] Envíos\n'.length + 700);
+    expect(requestInput).not.toContain(conflict.title);
+    expect(requestInput).not.toContain(protectedDocument.title);
+    expect(requestInput).not.toContain(faq.title);
+
+    expect(await db.knowledgeDocument.findUnique({ where: { id: first.id } })).toBeNull();
+    expect(await db.knowledgeDocument.findUnique({ where: { id: second.id } })).toBeNull();
+    const merged = await db.knowledgeDocument.findFirstOrThrow({ where: { kind: 'POLICY', title: 'Envíos agrupados' }, include: { sources: true } });
+    expect(merged).toMatchObject({ status: 'PENDING', confidence: 0.9, temporal: true, consolidated: true });
+    expect(merged.sources.map((source) => source.excerpt).sort()).toEqual(['Fuente de Envíos', 'Fuente de Envíos nacionales'].sort());
+    const mergedChunk = await db.$queryRaw<{ embedding: string | null }[]>`
+      SELECT embedding::text AS embedding FROM knowledge_chunks WHERE document_id = ${merged.id}::uuid AND kind = 'DOCUMENT'`;
+    expect(mergedChunk).toHaveLength(1);
+    expect(mergedChunk[0]?.embedding).not.toBeNull();
+
+    expect(await db.knowledgeDocument.findUnique({ where: { id: third.id } })).toMatchObject({ status: 'PENDING', version: 1 });
+    expect(await db.knowledgeDocument.findUnique({ where: { id: fourth.id } })).toMatchObject({ status: 'REJECTED' });
+    expect(await db.knowledgeReview.findFirst({ where: { documentId: fourth.id, action: 'rejected' } })).toMatchObject({ note: 'Descartado al agrupar' });
+    expect(await db.knowledgeDocument.findUnique({ where: { id: protectedDocument.id } })).toMatchObject({ status: 'PENDING' });
+    expect(await db.knowledgeDocument.findUnique({ where: { id: conflict.id } })).toMatchObject({ status: 'CONFLICT', conflictWithId: protectedDocument.id });
+    expect(await db.knowledgeDocument.findUnique({ where: { id: faq.id } })).toMatchObject({ status: 'PENDING' });
+  });
+
+  it('preserva el indicador temporal al editar en solitario y al fusionar', async () => {
+    const { c, llm } = createTestContainer();
+    const single = await db.knowledgeDocument.create({
+      data: { kind: 'POLICY', title: 'A', content: 'Contenido A', temporal: true },
+    });
+    await db.knowledgeDocument.create({
+      data: { kind: 'POLICY', title: 'B', content: 'Contenido B', temporal: true },
+    });
+    await db.knowledgeDocument.create({
+      data: { kind: 'POLICY', title: 'C', content: 'Contenido C', temporal: false },
+    });
+    llm.push(
+      textReply(
+        JSON.stringify({
+          topics: [
+            { title: 'A actualizado', content: 'Contenido A actualizado', temporal: false, ids: ['1'] },
+            { title: 'Fusionado', content: 'Contenido combinado', temporal: false, ids: ['2', '3'] },
+          ],
+          discard: [],
+        }),
+      ),
+    );
+
+    expect(await c.knowledge.consolidate('POLICY')).toBe(1);
+    expect(await db.knowledgeDocument.findUnique({ where: { id: single.id } })).toMatchObject({
+      title: 'A actualizado',
+      content: 'Contenido A actualizado',
+      temporal: true,
+      version: 2,
+    });
+    expect(await db.knowledgeDocument.findFirstOrThrow({ where: { kind: 'POLICY', title: 'Fusionado' } })).toMatchObject({
+      temporal: true,
+      consolidated: true,
+    });
+  });
+
+  it('no modifica documentos que cambiaron mientras se generaba la respuesta de agrupación', async () => {
+    const { c, llm } = createTestContainer();
+    const [first, second, third, fourth] = await Promise.all(
+      ['A', 'B', 'C', 'D'].map((title) =>
+        db.knowledgeDocument.create({ data: { kind: 'POLICY', title, content: `Contenido original ${title}` } }),
+      ),
+    );
+    llm.push(async () => {
+      await c.knowledge.edit(first!.id, { content: 'Edición concurrente de A' }, null);
+      await c.knowledge.edit(third!.id, { content: 'Edición concurrente de C' }, null);
+      await c.knowledge.edit(fourth!.id, { content: 'Edición concurrente de D' }, null);
+      return textReply(
+        JSON.stringify({
+          topics: [
+            { title: 'Agrupado', content: 'Contenido combinado', temporal: false, ids: ['1', '2'] },
+            { title: 'Reescrito por el modelo', content: 'No debe reemplazar la edición', temporal: false, ids: ['3'] },
+          ],
+          discard: ['4'],
+        }),
+      );
+    });
+
+    expect(await c.knowledge.consolidate('POLICY')).toBe(0);
+    expect(await db.knowledgeDocument.findUnique({ where: { id: first!.id } })).toMatchObject({
+      content: 'Edición concurrente de A',
+      status: 'PENDING',
+      version: 2,
+    });
+    expect(await db.knowledgeDocument.findUnique({ where: { id: second!.id } })).toMatchObject({ status: 'PENDING', version: 1 });
+    expect(await db.knowledgeDocument.findUnique({ where: { id: third!.id } })).toMatchObject({
+      content: 'Edición concurrente de C',
+      status: 'PENDING',
+      version: 2,
+    });
+    expect(await db.knowledgeDocument.findUnique({ where: { id: fourth!.id } })).toMatchObject({
+      content: 'Edición concurrente de D',
+      status: 'PENDING',
+      version: 2,
+    });
+    expect(await db.knowledgeDocument.count({ where: { kind: 'POLICY' } })).toBe(4);
+  });
+
+  it('encola la agrupación y permite aprobar en lote con conteo de fallos', async () => {
+    const { c } = createTestContainer();
+    await c.auth.createUser({ email: 'admin@knowledge.test', name: 'Admin', password: 'clave-admin-123', roleCode: 'admin' });
+    const app: FastifyInstance = await buildServer(c, { panelDir: '/no-existe' });
+    try {
+      const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'admin@knowledge.test', password: 'clave-admin-123' } });
+      const cookie = login.cookies.find((entry) => entry.name === 'bot_session');
+      const headers = { cookie: cookie ? `bot_session=${cookie.value}` : '' };
+      const queued = await app.inject({ method: 'POST', url: '/api/knowledge/consolidate', headers, payload: {} });
+      expect(queued.json()).toEqual({ queued: true });
+      expect(await db.job.count({ where: { type: 'knowledge.consolidate', status: 'PENDING' } })).toBe(1);
+
+      const documents = await Promise.all(
+        ['Envíos', 'Pagos'].map((title) =>
+          db.knowledgeDocument.create({ data: { kind: 'POLICY', title, content: `Contenido de ${title}` } }),
+        ),
+      );
+      expect((await app.inject({ url: '/api/knowledge?take=1', headers })).json().documents).toHaveLength(1);
+      expect((await app.inject({ url: '/api/knowledge?take=501', headers })).statusCode).toBe(400);
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/knowledge/bulk-status',
+        headers,
+        payload: { ids: [...documents.map((document) => document.id), '00000000-0000-4000-8000-000000000000'], status: 'APPROVED' },
+      });
+      expect(response.json()).toEqual({ updated: 2, failed: 1 });
+      expect(await db.knowledgeDocument.count({ where: { id: { in: documents.map((document) => document.id) }, status: 'APPROVED' } })).toBe(2);
+      expect(await db.auditLog.findFirst({ where: { action: 'knowledge.bulk_approved' } })).not.toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('un conocimiento casi idéntico pero con otro valor se revisa como contradicción, no como duplicado', async () => {
     const same = Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0));
     const { c, llm } = createTestContainer({ embedder: { embed: async (texts: string[]) => texts.map(() => same) } });

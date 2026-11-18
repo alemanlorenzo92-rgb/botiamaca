@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Shell } from '@/components/Shell';
 import { api, ApiError, qs, upload } from '@/lib/api';
 import { dateTime } from '@/lib/format';
@@ -50,7 +50,7 @@ interface Preview {
   mediaFiles: number;
 }
 
-function DocCard({ d, reload }: { d: Doc; reload: () => void }) {
+function DocCard({ d, reload, selected, onSelect }: { d: Doc; reload: () => void; selected: boolean; onSelect: () => void }) {
   const [editing, setEditing] = useState(false);
   const [f, setF] = useState({ title: d.title, content: d.content, kind: d.kind, temporal: d.temporal });
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +68,7 @@ function DocCard({ d, reload }: { d: Doc; reload: () => void }) {
     <div className="card kdoc">
       <div className="row between">
         <div className="row">
+          <label className="check"><input type="checkbox" checked={selected} onChange={onSelect} /> Seleccionar</label>
           <span className={`badge ${d.status}`}>{STATUS[d.status]}</span>
           <span className="badge">{KINDS[d.kind]}</span>
           {d.temporal && <span className="badge warn">puede cambiar</span>}
@@ -125,14 +126,74 @@ function Documents() {
   const [status, setStatus] = useState('PENDING');
   const [kind, setKind] = useState('');
   const [q, setQ] = useState('');
-  const docs = useData<{ documents: Doc[]; counts: Record<string, number> }>(`/knowledge${qs({ status, kind, q })}`);
+  const docs = useData<{ documents: Doc[]; counts: Record<string, number> }>(`/knowledge${qs({ status, kind, q, take: 500 })}`);
   const [adding, setAdding] = useState(false);
   const [f, setF] = useState({ kind: 'FAQ', title: '', content: '' });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [consolidating, setConsolidating] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const visibleDocuments = docs.data?.documents ?? [];
+  const allVisibleSelected = visibleDocuments.length > 0 && visibleDocuments.every((doc) => selected.has(doc.id));
+  useEffect(() => setSelected(new Set()), [status, kind, q]);
   const add = async () => {
     await api('/knowledge', { body: f });
     setF({ kind: 'FAQ', title: '', content: '' });
     setAdding(false);
     void docs.reload();
+  };
+  const toggleDocument = (id: string) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleVisible = () => {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const doc of visibleDocuments) {
+        if (allVisibleSelected) next.delete(doc.id);
+        else next.add(doc.id);
+      }
+      return next;
+    });
+  };
+  const bulkStatus = async (nextStatus: 'APPROVED' | 'REJECTED') => {
+    if (!selected.size) return;
+    const verb = nextStatus === 'APPROVED' ? 'aprobar' : 'rechazar';
+    if (!confirm(`¿${verb[0]?.toUpperCase()}${verb.slice(1)} ${selected.size} conocimientos seleccionados?`)) return;
+    setBulkBusy(true);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const result = await api<{ updated: number; failed: number }>('/knowledge/bulk-status', {
+        body: { ids: [...selected], status: nextStatus },
+      });
+      setActionMessage(`Actualizados: ${result.updated} · fallidos: ${result.failed}.`);
+      setSelected(new Set());
+      await docs.reload();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+  const consolidate = async () => {
+    if (!confirm('¿Agrupar los temas de conocimiento parecidos?')) return;
+    setConsolidating(true);
+    setActionError(null);
+    setActionMessage('Agrupando… puede tardar unos minutos; recargá después');
+    try {
+      await api('/knowledge/consolidate', { body: {} });
+    } catch (error) {
+      setActionMessage(null);
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setConsolidating(false);
+    }
   };
   return (
     <div className="stack">
@@ -163,7 +224,28 @@ function Documents() {
       )}
       {docs.error && <p className="error">{docs.error}</p>}
       {docs.data && !docs.data.documents.length && <p className="muted">No hay nada en esta sección.</p>}
-      {docs.data?.documents.map((d) => <DocCard key={`${d.id}-${d.version}-${d.status}`} d={d} reload={() => void docs.reload()} />)}
+      <div className="row">
+        {visibleDocuments.length > 0 && (
+          <>
+          <label className="check"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisible} /> Seleccionar todos los visibles</label>
+          <span className="muted small">{selected.size} seleccionados</span>
+          <button className="primary" disabled={!selected.size || bulkBusy} onClick={() => void bulkStatus('APPROVED')}>Aprobar seleccionados</button>
+          <button className="danger" disabled={!selected.size || bulkBusy} onClick={() => void bulkStatus('REJECTED')}>Rechazar seleccionados</button>
+          </>
+        )}
+        <button disabled={consolidating} onClick={() => void consolidate()}>Agrupar temas parecidos</button>
+      </div>
+      {actionMessage && <p className="muted small">{actionMessage}</p>}
+      {actionError && <p className="error">{actionError}</p>}
+      {visibleDocuments.map((d) => (
+        <DocCard
+          key={`${d.id}-${d.version}-${d.status}`}
+          d={d}
+          reload={() => void docs.reload()}
+          selected={selected.has(d.id)}
+          onSelect={() => toggleDocument(d.id)}
+        />
+      ))}
     </div>
   );
 }

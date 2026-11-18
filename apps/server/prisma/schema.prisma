@@ -793,6 +793,7 @@ model KnowledgeDocument {
   confidence     Float               @default(0.5)
   /// Dato que puede vencer (precios, promos, fechas)
   temporal       Boolean             @default(false)
+  consolidated   Boolean             @default(false)
   version        Int                 @default(1)
   conflictWithId String?             @map("conflict_with_id") @db.Uuid
   conflictWith   KnowledgeDocument?  @relation("KnowledgeConflict", fields: [conflictWithId], references: [id], onDelete: SetNull)

@@ -253,17 +253,19 @@ export class ChatImportService {
     return { chat: saved, duplicate: false, inserted, skipped: rows.length - inserted, mediaImported, mediaErrors };
   }
 
-  /** Borra la importación, sus mensajes, medios importados y el conocimiento que solo salía de este chat. */
+  /** Borra la importación, sus mensajes, medios importados y el conocimiento consolidado que mezcla sus datos. */
   async remove(chatId: string) {
     const docs = await this.db.knowledgeDocument.findMany({
       where: { sources: { some: { chatId } } },
       include: { sources: { select: { chatId: true } } },
     });
-    const onlyThisChat = docs.filter((d) => d.sources.every((s) => s.chatId === chatId)).map((d) => d.id);
+    const documentsToDelete = docs
+      .filter((doc) => doc.consolidated || doc.sources.every((source) => source.chatId === chatId))
+      .map((doc) => doc.id);
     const media = await this.db.mediaAsset.findMany({ where: { importedChatId: chatId, source: 'IMPORT' }, select: { id: true } });
-    await this.db.knowledgeDocument.deleteMany({ where: { id: { in: onlyThisChat } } });
+    await this.db.knowledgeDocument.deleteMany({ where: { id: { in: documentsToDelete } } });
     for (const m of media) await this.media.remove(m.id);
     await this.db.importedChat.delete({ where: { id: chatId } });
-    return { deletedDocuments: onlyThisChat.length, deletedMedia: media.length };
+    return { deletedDocuments: documentsToDelete.length, deletedMedia: media.length };
   }
 }

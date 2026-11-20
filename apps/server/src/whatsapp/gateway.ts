@@ -63,21 +63,30 @@ export class WhatsAppGateway implements WhatsAppTransport {
     return this.status === 'CONNECTED' && !!this.sock;
   }
 
-  private async setStatus(status: WhatsAppStatus, extra: { error?: string | null } = {}) {
+  private async setStatus(
+    status: WhatsAppStatus,
+    extra: { error?: string | null } = {},
+    options: { continueOnPersistenceError?: boolean } = {},
+  ) {
     this.status = status;
     if (status !== 'QR') this.qrDataUrl = null;
     const now = new Date();
-    await this.db.waState.upsert({
-      where: { id: 1 },
-      create: { id: 1, status },
-      update: {
-        status,
-        meJid: this.sock?.user?.id ?? undefined,
-        ...(status === 'CONNECTED' ? { lastConnected: now, lastError: null } : {}),
-        ...(status === 'DISCONNECTED' || status === 'LOGGED_OUT' ? { lastDisconnect: now } : {}),
-        ...(extra.error !== undefined ? { lastError: extra.error } : {}),
-      },
-    });
+    try {
+      await this.db.waState.upsert({
+        where: { id: 1 },
+        create: { id: 1, status },
+        update: {
+          status,
+          meJid: this.sock?.user?.id ?? undefined,
+          ...(status === 'CONNECTED' ? { lastConnected: now, lastError: null } : {}),
+          ...(status === 'DISCONNECTED' || status === 'LOGGED_OUT' ? { lastDisconnect: now } : {}),
+          ...(extra.error !== undefined ? { lastError: extra.error } : {}),
+        },
+      });
+    } catch (error) {
+      if (!options.continueOnPersistenceError) throw error;
+      this.logger.error({ err: error, status }, 'no se pudo guardar estado de WhatsApp');
+    }
     this.bus.publish({ type: 'whatsapp.status', status, qr: this.qrDataUrl });
   }
 
@@ -125,11 +134,15 @@ export class WhatsAppGateway implements WhatsAppTransport {
           this.qrDataUrl = await QRCode.toDataURL(update.qr, { margin: 1, width: 320 });
           this.status = 'QR';
           this.bus.publish({ type: 'whatsapp.status', status: 'QR', qr: this.qrDataUrl });
-          await this.db.waState.upsert({ where: { id: 1 }, create: { id: 1, status: 'QR' }, update: { status: 'QR' } });
+          try {
+            await this.db.waState.upsert({ where: { id: 1 }, create: { id: 1, status: 'QR' }, update: { status: 'QR' } });
+          } catch (error) {
+            this.logger.error({ err: error, status: 'QR' }, 'no se pudo guardar estado de WhatsApp');
+          }
         }
         if (update.connection === 'open') {
           this.attempts = 0;
-          await this.setStatus('CONNECTED');
+          await this.setStatus('CONNECTED', {}, { continueOnPersistenceError: true });
           await this.onConnected();
           this.logger.info({ me: sock.user?.id }, 'WhatsApp conectado');
         }
@@ -138,6 +151,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
           const reason = update.lastDisconnect?.error?.message ?? 'desconocido';
           this.sock = null;
           if (this.stopping) return;
+          this.logger.warn({ disconnectReasonCode: code ?? null }, 'WhatsApp conexión cerrada');
           if (code === DisconnectReason.loggedOut) {
             this.logger.warn('Sesión de WhatsApp cerrada desde el teléfono: hace falta escanear un QR nuevo');
             await clearAuthState(this.db);
@@ -145,7 +159,7 @@ export class WhatsAppGateway implements WhatsAppTransport {
             this.scheduleReconnect(2000);
             return;
           }
-          await this.setStatus('DISCONNECTED', { error: `${code ?? ''} ${reason}`.trim() });
+          await this.setStatus('DISCONNECTED', { error: `${code ?? ''} ${reason}`.trim() }, { continueOnPersistenceError: true });
           const delay = code === DisconnectReason.restartRequired ? 0 : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** this.attempts);
           this.attempts += 1;
           this.scheduleReconnect(delay);
